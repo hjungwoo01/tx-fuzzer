@@ -4,16 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"regexp"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/hjungwoo01/elle-runner/internal/config"
-	"github.com/hjungwoo01/elle-runner/internal/driver"
-	"github.com/hjungwoo01/elle-runner/internal/history"
-	"github.com/hjungwoo01/elle-runner/internal/workload"
+	"github.com/hjungwoo01/tx-fuzzer/internal/config"
+	"github.com/hjungwoo01/tx-fuzzer/internal/driver"
+	"github.com/hjungwoo01/tx-fuzzer/internal/history"
+	"github.com/hjungwoo01/tx-fuzzer/internal/workload"
 )
 
 type Env struct {
@@ -23,92 +20,39 @@ type Env struct {
 	Start time.Time
 }
 
-var (
-	keyMapMu  sync.Mutex
-	keyMap    = make(map[string]int)
-	nextKeyID int
-)
-
-func mapKeyStable(s string) int {
-	keyMapMu.Lock()
-	defer keyMapMu.Unlock()
-	if id, ok := keyMap[s]; ok {
-		return id
-	}
-	id := nextKeyID
-	nextKeyID++
-	keyMap[s] = id
-	return id
-}
-
-var reKDigits = regexp.MustCompile(`^k(\d+)$`)
-
-func toIntKey(v any) int {
-	switch x := v.(type) {
-	case int:
-		return x
-	case int32:
-		return int(x)
-	case int64:
-		return int(x)
-	case uint:
-		return int(x)
-	case uint32:
-		return int(x)
-	case uint64:
-		return int(x)
-	case string:
-		// numeric string
-		if n, err := strconv.Atoi(x); err == nil {
-			return n
-		}
-		// pattern kNNN
-		if m := reKDigits.FindStringSubmatch(x); m != nil {
-			if n, err := strconv.Atoi(m[1]); err == nil {
-				return n
-			}
-		}
-		// fallback: stable map
-		return mapKeyStable(x)
-	default:
-		return mapKeyStable(fmt.Sprintf("%v", v))
-	}
-}
-
-func subRefInt(expr string, args []any) int {
-	if expr == "" || expr[0] != '$' {
-		// literal key expression
-		return toIntKey(expr)
-	}
-	var i int
-	fmt.Sscanf(expr, "$%d", &i)
-	if i > 0 && i <= len(args) {
-		return toIntKey(args[i-1])
-	}
-	return toIntKey(expr)
-}
-
 func Run(ctx context.Context, env *Env) error {
 	wl := env.Cfg.Workload
 	plans := workload.BuildPlans(wl)
 	chooser := workload.NewChooser(wl.Mix)
-	start := time.Now()
-	end := start.Add(env.Cfg.Scheduling.Duration)
+	env.Start = time.Now()
+	end := env.Start.Add(env.Cfg.Scheduling.Duration)
 	clients := env.Cfg.Scheduling.Clients
 
 	errCh := make(chan error, clients)
 	barrierEvery := env.Cfg.Scheduling.BarrierEvery
 	bar := NewCyclicBarrier(env.Cfg.Scheduling.Clients)
 
+	if env.Hist == nil {
+		fmt.Printf("[diag] env.Hist is nil -- history writer not initialized!\n")
+	} else {
+		fmt.Printf("[diag] env.Hist is ready (ok)\n")
+	}
+	fmt.Printf("[diag] clients=%d, duration=%s\n", clients, env.Cfg.Scheduling.Duration)
+
 	// start clients
 	for pid := 0; pid < clients; pid++ {
 		go func(process int) {
+			fmt.Printf("[diag] starting client %d\n", process)
 			defer func() { errCh <- nil }()
 			iter := 0
 			for time.Now().Before(end) {
 				iter++
 				name := chooser.Pick()
 				plan := plans[name]
+				// fmt.Printf("[diag] picked plan %s -> %d steps\n", name, len(plan.Template.Steps))
+				// for i, st := range plan.Template.Steps {
+				// 	fmt.Printf("[diag] step %d elle? %#v\n", i, st.Elle)
+				// }
 				iso := mapIso(plan.Template.Isolation)
 
 				tctx, cancel := workload.ContextWithTimeout(ctx, plan.Template.Timeout)
@@ -118,16 +62,23 @@ func Run(ctx context.Context, env *Env) error {
 					continue
 				}
 
+				// txnID := history.NextTxnID()
 				stepVals := []any{}
 				fail := false
+				rolledBack := false
 				// Per-transaction Elle mop collection
-				mops := make([]history.Mop, 0, 8)
-				var lastMono int64
+				invokeMops := make([]history.Mop, 0, 8)
+				okMops := make([]history.Mop, 0, 8)
+				var firstElleMono int64
+				var firstElleWall int64
+				var lastElleMono int64
+				var lastElleWall int64
+				firstWriteDiagDone := false
 
 				for si, st := range plan.Template.Steps {
 					// Barrier (optional): align starts
 					if barrierEvery > 0 && iter%barrierEvery == 0 && si == 0 {
-						// Align starts; don’t block forever—use a small timeout
+						// Align starts; don't block forever -- use a small timeout
 						_ = bar.Await(200 * time.Millisecond)
 					}
 
@@ -149,6 +100,63 @@ func Run(ctx context.Context, env *Env) error {
 						}
 					}
 
+					// track Elle operations for transactional history
+					stepStartMono := time.Since(env.Start).Nanoseconds()
+					stepStartWall := time.Now().UnixNano()
+					haveElle := st.Elle != nil
+					elleOpKind := ""
+					elleMopKind := ""
+					elleKeyStr := ""
+					var elleInvokeVal any
+					var elleOkVal any
+					elleIdx := -1
+
+					if haveElle {
+						elleOpKind, elleMopKind = elleOpKinds(st.Elle.F)
+						elleKeyStr = subRef(st.Elle.Key, args)
+						if len(invokeMops) == 0 {
+							firstElleMono = stepStartMono
+							firstElleWall = stepStartWall
+						}
+						if elleOpKind == ":read" {
+							elleInvokeVal = nil
+						} else {
+							val := st.Elle.Value
+							if val == nil {
+								val = valueArgGuess(args)
+							}
+							elleInvokeVal = val
+							elleOkVal = val
+						}
+						invokeVal := elleInvokeVal
+						if elleMopKind == ":r" {
+							invokeVal = nil
+						}
+						okVal := elleOkVal
+						if elleMopKind == ":r" {
+							okVal = nil
+						}
+						invokeMops = append(invokeMops, history.Mop{
+							Kind:  elleMopKind,
+							Key:   elleKeyStr,
+							Value: invokeVal,
+						})
+						okMops = append(okMops, history.Mop{
+							Kind:  elleMopKind,
+							Key:   elleKeyStr,
+							Value: okVal,
+						})
+						elleIdx = len(okMops) - 1
+						if !firstWriteDiagDone {
+							// if env.Hist == nil {
+							// 	fmt.Printf("[diag] process %d has nil Hist!\n", process)
+							// } else {
+							// 	fmt.Printf("[diag] process %d about to write txn %s\n", process, txnID)
+							// }
+							firstWriteDiagDone = true
+						}
+					}
+
 					// exec
 					if hasSelect(st.SQL) {
 						row, err := tx.QueryRow(tctx, st.SQL, args...)
@@ -156,61 +164,70 @@ func Run(ctx context.Context, env *Env) error {
 							_ = tx.Rollback(tctx)
 							cancel()
 							fail = true
+							rolledBack = true
+							lastElleMono = time.Since(env.Start).Nanoseconds()
+							lastElleWall = time.Now().UnixNano()
 							break
 						}
-						var v any
+						var scanVal any
 						if st.Elle != nil && st.Elle.ValueFromResultCol != nil {
-							// assume single column result for simplicity
-							if err := row.Scan(&v); err != nil {
+							if err := row.Scan(&scanVal); err != nil {
 								_ = tx.Rollback(tctx)
 								cancel()
 								fail = true
+								rolledBack = true
+								lastElleMono = time.Since(env.Start).Nanoseconds()
+								lastElleWall = time.Now().UnixNano()
 								break
 							}
 						} else {
-							// ignore row value
 							var dummy any
-							_ = row.Scan(&dummy)
+							if err := row.Scan(&dummy); err != nil {
+								_ = tx.Rollback(tctx)
+								cancel()
+								fail = true
+								rolledBack = true
+								lastElleMono = time.Since(env.Start).Nanoseconds()
+								lastElleWall = time.Now().UnixNano()
+								break
+							}
+							scanVal = dummy
 						}
-						if st.Elle != nil {
-							val := v
+						if haveElle {
+							val := scanVal
 							if st.Elle.Value != nil {
 								val = st.Elle.Value
 							} else if st.Elle.ValueFromResultCol == nil && val == nil {
 								val = valueArgGuess(args)
 							}
-							kind := st.Elle.F
-							if kind == ":read" {
-								kind = ":r"
-							} else {
-								kind = ":w"
+							elleOkVal = val
+							if elleIdx >= 0 {
+								okMops[elleIdx].Value = val
 							}
-
-							// OUTPUT CAPTURED
-							mops = append(mops, history.Mop{Kind: kind, Key: subRefInt(st.Elle.Key, args), Value: val})
-							lastMono = time.Since(env.Start).Nanoseconds()
+							lastElleMono = time.Since(env.Start).Nanoseconds()
+							lastElleWall = time.Now().UnixNano()
 						}
 					} else {
-						_, err := tx.Exec(tctx, st.SQL, args...)
-						if err != nil {
+						if _, err := tx.Exec(tctx, st.SQL, args...); err != nil {
 							_ = tx.Rollback(tctx)
 							cancel()
 							fail = true
+							rolledBack = true
+							lastElleMono = time.Since(env.Start).Nanoseconds()
+							lastElleWall = time.Now().UnixNano()
 							break
 						}
-						if st.Elle != nil {
+						if haveElle {
 							val := st.Elle.Value
 							if val == nil {
 								val = valueArgGuess(args)
 							}
-							kind := st.Elle.F
-							if kind == ":read" {
-								kind = ":r"
-							} else {
-								kind = ":w"
+							elleOkVal = val
+							if elleIdx >= 0 {
+								okMops[elleIdx].Value = val
 							}
-							mops = append(mops, history.Mop{Kind: kind, Key: subRefInt(st.Elle.Key, args), Value: val})
-							lastMono = time.Since(env.Start).Nanoseconds()
+							lastElleMono = time.Since(env.Start).Nanoseconds()
+							lastElleWall = time.Now().UnixNano()
 						}
 					}
 
@@ -218,24 +235,53 @@ func Run(ctx context.Context, env *Env) error {
 						time.Sleep(st.Sleep)
 					}
 
-					// optional random cancels
+					stepVals = args
 					if env.Cfg.Scheduling.RandomKillPct > 0 && rand.IntN(100) < env.Cfg.Scheduling.RandomKillPct {
 						_ = tx.Rollback(tctx)
-						cancel()
 						fail = true
+						rolledBack = true
+						lastElleMono = time.Since(env.Start).Nanoseconds()
+						lastElleWall = time.Now().UnixNano()
 						break
 					}
-
-					stepVals = args
 				}
 
 				if !fail {
 					if err := tx.Commit(tctx); err != nil {
 						_ = tx.Rollback(tctx)
+						fail = true
+						rolledBack = true
 					} else {
-						if len(mops) > 0 {
-							_ = env.Hist.WriteTxn(process, lastMono, time.Now().UnixNano(), mops)
+						if len(invokeMops) > 0 {
+							if firstElleMono == 0 {
+								firstElleMono = time.Since(env.Start).Nanoseconds()
+								firstElleWall = time.Now().UnixNano()
+							}
+							if lastElleMono == 0 {
+								lastElleMono = time.Since(env.Start).Nanoseconds()
+								lastElleWall = time.Now().UnixNano()
+							}
+							recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops)
+							recordTxnOp(env.Hist, history.Ok, process, lastElleMono, lastElleWall, okMops)
 						}
+						cancel()
+					}
+				}
+				if fail {
+					if !rolledBack {
+						_ = tx.Rollback(tctx)
+					}
+					if len(invokeMops) > 0 {
+						if firstElleMono == 0 {
+							firstElleMono = time.Since(env.Start).Nanoseconds()
+							firstElleWall = time.Now().UnixNano()
+						}
+						if lastElleMono == 0 {
+							lastElleMono = time.Since(env.Start).Nanoseconds()
+							lastElleWall = time.Now().UnixNano()
+						}
+						recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops)
+						recordTxnOp(env.Hist, history.Fail, process, lastElleMono, lastElleWall, okMops)
 					}
 					cancel()
 				}
@@ -243,12 +289,22 @@ func Run(ctx context.Context, env *Env) error {
 		}(pid)
 	}
 
+	var runErr error
 	for i := 0; i < clients; i++ {
-		if err := <-errCh; err != nil {
-			return err
+		if err := <-errCh; err != nil && runErr == nil {
+			runErr = err
 		}
 	}
-	return nil
+	if env.Hist != nil {
+		if err := env.Hist.Close(); err != nil {
+			if runErr == nil {
+				runErr = err
+			} else {
+				fmt.Printf("history close error: %v\n", err)
+			}
+		}
+	}
+	return runErr
 }
 
 func hasSelect(sql string) bool {
@@ -260,18 +316,6 @@ func valueArgGuess(args []any) any {
 		return args[0]
 	}
 	return nil
-}
-func getF(st config.Step) string {
-	if st.Elle != nil {
-		return st.Elle.F
-	}
-	return ":exec"
-}
-func subRefKey(st config.Step, args []any) string {
-	if st.Elle != nil {
-		return subRef(st.Elle.Key, args)
-	}
-	return ""
 }
 func subRef(expr string, args []any) string {
 	if expr == "" || expr[0] != '$' {
@@ -287,6 +331,28 @@ func subRef(expr string, args []any) string {
 	}
 	return expr
 }
+
+func recordTxnOp(hw *history.Writer, opType history.OpType, process int, timeNS, wallNS int64, mops []history.Mop) {
+	if hw == nil || len(mops) == 0 {
+		return
+	}
+	if err := hw.WriteTxn(opType, process, timeNS, wallNS, mops); err != nil {
+		fmt.Printf("history txn write error: %v\n", err)
+	}
+}
+
+func elleOpKinds(f string) (string, string) {
+	base := strings.TrimPrefix(f, ":")
+	switch base {
+	case "read", "r":
+		return ":read", ":r"
+	case "write", "w":
+		return ":write", ":w"
+	default:
+		return ":" + base, ""
+	}
+}
+
 func mapIso(s string) driver.Isolation {
 	switch s {
 	case "SERIALIZABLE":

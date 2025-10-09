@@ -2,7 +2,7 @@ database:
   kind: postgres
   dsn: "postgres://postgres@/testdb?host=/tmp&sslmode=disable"
 
-init_schema: false
+init_schema: true
 
 workload:
   datatype: register
@@ -15,15 +15,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [1]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.005)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [1]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [1]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: hot_rw_k2
       isolation: "READ COMMITTED"
@@ -31,15 +31,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [2]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.005)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [2]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [2]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: hot_rw_k3
       isolation: "READ COMMITTED"
@@ -47,15 +47,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [3]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.005)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [3]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [3]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     # -------- COLD KEYS (lower contention) --------
     - name: cold_rw_k4
@@ -64,15 +64,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [4]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [4]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [4]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k5
       isolation: "READ COMMITTED"
@@ -80,15 +80,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [5]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [5]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [5]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k6
       isolation: "READ COMMITTED"
@@ -96,15 +96,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [6]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [6]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [6]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k7
       isolation: "READ COMMITTED"
@@ -112,15 +112,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [7]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [7]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [7]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k8
       isolation: "READ COMMITTED"
@@ -128,15 +128,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [8]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [8]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [8]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k9
       isolation: "READ COMMITTED"
@@ -144,15 +144,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [9]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [9]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [9]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: cold_rw_k10
       isolation: "READ COMMITTED"
@@ -160,15 +160,15 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [10]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.002)"
           args: []
         - sql: "UPDATE kv SET v=v+1 WHERE k=$1"
           args: [10]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [10]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     # -------- READ-ONLY PROBES (non-repeatable read checks) --------
     - name: ro_k1
@@ -177,12 +177,12 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [1]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.01)"
           args: []
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [1]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: ro_k2
       isolation: "READ COMMITTED"
@@ -190,12 +190,12 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [2]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.01)"
           args: []
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [2]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     - name: ro_k3
       isolation: "READ COMMITTED"
@@ -203,12 +203,12 @@ workload:
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [3]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT pg_sleep(0.01)"
           args: []
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [3]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
 
     # -------- TRANSFERS (write/write conflicts) --------
     - name: xfer_k1_k2
@@ -217,16 +217,16 @@ workload:
       steps:
         - sql: "UPDATE kv SET v=v-1 WHERE k=$1"
           args: [1]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "UPDATE kv SET v=v+1 WHERE k=$2"
           args: [2]
-          elle: {f: ":write", key: "$2"}
+          elle: {f: ":w", key: "$2"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [1]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT v FROM kv WHERE k=$2"
           args: [2]
-          elle: {f: ":read", key: "$2", value_from_result_col: 0}
+          elle: {f: ":r", key: "$2", value_from_result_col: 0}
 
     - name: xfer_k2_k3
       isolation: "READ COMMITTED"
@@ -234,16 +234,16 @@ workload:
       steps:
         - sql: "UPDATE kv SET v=v-1 WHERE k=$1"
           args: [2]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "UPDATE kv SET v=v+1 WHERE k=$2"
           args: [3]
-          elle: {f: ":write", key: "$2"}
+          elle: {f: ":w", key: "$2"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [2]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT v FROM kv WHERE k=$2"
           args: [3]
-          elle: {f: ":read", key: "$2", value_from_result_col: 0}
+          elle: {f: ":r", key: "$2", value_from_result_col: 0}
 
     - name: xfer_k3_k1
       isolation: "READ COMMITTED"
@@ -251,16 +251,16 @@ workload:
       steps:
         - sql: "UPDATE kv SET v=v-1 WHERE k=$1"
           args: [3]
-          elle: {f: ":write", key: "$1"}
+          elle: {f: ":w", key: "$1"}
         - sql: "UPDATE kv SET v=v+1 WHERE k=$2"
           args: [1]
-          elle: {f: ":write", key: "$2"}
+          elle: {f: ":w", key: "$2"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: [3]
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+          elle: {f: ":r", key: "$1", value_from_result_col: 0}
         - sql: "SELECT v FROM kv WHERE k=$2"
           args: [1]
-          elle: {f: ":read", key: "$2", value_from_result_col: 0}
+          elle: {f: ":r", key: "$2", value_from_result_col: 0}
 
   mix:
     # heavy hotspot traffic on k1..k3

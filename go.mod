@@ -1,9 +1,10 @@
-module github.com/hjungwoo01/elle-runner
+module github.com/hjungwoo01/tx-fuzzer
 
 go 1.25.0
 
 require (
 	github.com/jackc/pgx/v5 v5.7.5
+	github.com/lib/pq v1.10.9
 	gopkg.in/yaml.v3 v3.0.1
 )
 

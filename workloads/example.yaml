@@ -2,7 +2,7 @@ database:
   kind: postgres
   dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
-init_schema: false
+init_schema: true
 
 workload:
   datatype: register
@@ -15,7 +15,7 @@ workload:
           args:
             - rand_int: {min: 0, max: 1000000}
             - now_ns: {}
-            - choice: {from: ["k1","k2","k3","k4"]}
+            - choice: {from: [1, 2, 3, 4]}
           elle: {f: ":write", key: "$3"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: ["$3"]
@@ -25,7 +25,7 @@ workload:
       timeout: "1s"
       steps:
         - sql: "SELECT v FROM kv WHERE k=$1"
-          args: [{choice: {from: ["k1","k2","k3","k4"]}}]
+          args: [{choice: {from: [1, 2, 3, 4]}}]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
 
   mix:

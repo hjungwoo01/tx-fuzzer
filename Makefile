@@ -1,5 +1,5 @@
 SEED ?= workloads/seed.yaml
-WORKLOAD ?= workloads/rw_mix.yaml
+WORKLOAD ?= workloads/example.yaml
 
 OUT ?= history.edn
 HIST ?= history.edn
@@ -13,5 +13,5 @@ run:
 analyse:
 	clj -M:run $(HIST)
 
-clj:
-	clj -M:run $(HIST)
+check:
+	clj -J-Djava.awt.headless=true -M:run $(HIST)

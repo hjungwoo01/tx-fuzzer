@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hjungwoo01/elle-runner/internal/config"
+	"github.com/hjungwoo01/tx-fuzzer/internal/config"
 )
 
 type ArgValue struct {
