@@ -1,0 +1,53 @@
+# --- Go build artifacts ---
+/bin/
+/build/
+/dist/
+/out/
+/*.exe
+/*.exe~
+/*.dll
+/*.so
+/*.dylib
+*.test
+*.out
+
+# Go workspace files
+go.sum
+*.log
+
+# --- Clojure & Leiningen ---
+/target/
+/classes/
+/checkouts/
+/.cpcache/
+/.nrepl-port
+/.lein-failures
+/.nrepl-history
+
+# --- IntelliJ / GoLand ---
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# --- Editors ---
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- Test / Output logs ---
+/logs/
+/tmp/
+/history.json
+/results/
+*.txt
+*.json
+
+# --- Docker / Compose ---
+/docker-compose.override.yml
+/.env

@@ -1,0 +1,40 @@
+database:
+  kind: postgres
+  dsn: "postgres://postgres:YOUR_PASSWORD@localhost:5432/testdb?sslmode=disable"
+
+scheduling:
+  clients: 1
+  duration: 1s
+  barrierEvery: 0
+  randomKillPct: 0
+
+workload:
+  mix:
+    - txn: probe_k1
+      weight: 1
+
+  transactions:
+    - name: probe_k1
+      template:
+        isolation: "READ COMMITTED"
+        timeout: "2s"
+        steps:
+          - sql: "SELECT v FROM kv WHERE k = $1"
+            args: [1]
+            elle:
+              F: ":r"
+              Key: "$1"
+              ValueFromResultCol: 1
+
+          - sql: "UPDATE kv SET v = v + 1 WHERE k = $1"
+            args: [1]
+            elle:
+              F: ":w"
+              Key: "$1"
+
+          - sql: "SELECT v FROM kv WHERE k = $1"
+            args: [1]
+            elle:
+              F: ":r"
+              Key: "$1"
+              ValueFromResultCol: 1

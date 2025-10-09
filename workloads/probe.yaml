@@ -1,0 +1,24 @@
+database:
+  kind: postgres
+  dsn: "postgres://postgres@/testdb?host=/tmp&sslmode=disable"
+
+scheduling:
+  clients: 1
+  duration: 2s
+  barrierEvery: 0
+  randomKillPct: 0
+
+workload:
+  mix:
+    - txn: probe
+      weight: 1
+
+  transactions:
+    - name: probe
+      template:
+        isolation: "READ COMMITTED"
+        timeout: "2s"
+        steps:
+          - sql: "SELECT 123"
+            args: []
+            elle: { f: ":r", key: "const", value_from_result_col: 1 }
