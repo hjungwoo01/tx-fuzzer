@@ -51,3 +51,15 @@ Thumbs.db
 # --- Docker / Compose ---
 /docker-compose.override.yml
 /.env
+
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
