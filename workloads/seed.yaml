@@ -1,40 +1,45 @@
 database:
   kind: postgres
-  dsn: "postgres://postgres:YOUR_PASSWORD@localhost:5432/testdb?sslmode=disable"
+  dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
 scheduling:
   clients: 1
-  duration: 1s
-  barrierEvery: 0
-  randomKillPct: 0
+  duration: "1s"
+  barrier_every: 0
+  random_kill_pct: 0
 
 workload:
   mix:
-    - txn: probe_k1
+    - txn: seed
       weight: 1
 
   transactions:
-    - name: probe_k1
-      template:
-        isolation: "READ COMMITTED"
-        timeout: "2s"
-        steps:
-          - sql: "SELECT v FROM kv WHERE k = $1"
-            args: [1]
-            elle:
-              F: ":r"
-              Key: "$1"
-              ValueFromResultCol: 1
+    - name: seed
+      isolation: "SERIALIZABLE"
+      timeout: "5s"
+      steps:
+        # Create kv table if not exists
+        - sql: |
+            CREATE TABLE IF NOT EXISTS kv (
+              k TEXT PRIMARY KEY,
+              v INT,
+              ts BIGINT DEFAULT 0
+            );
 
-          - sql: "UPDATE kv SET v = v + 1 WHERE k = $1"
-            args: [1]
-            elle:
-              F: ":w"
-              Key: "$1"
-
-          - sql: "SELECT v FROM kv WHERE k = $1"
-            args: [1]
-            elle:
-              F: ":r"
-              Key: "$1"
-              ValueFromResultCol: 1
+        # Insert 4 initial keys
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k1"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k2"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k3"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k4"
+            - 0

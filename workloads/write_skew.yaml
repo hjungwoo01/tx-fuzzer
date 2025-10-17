@@ -1,0 +1,69 @@
+database:
+  kind: postgres
+  dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+
+init_schema: false
+
+workload:
+  datatype: register
+  transactions:
+    # Transaction 1: Cross-key write (potential for write skew)
+    - name: transfer
+      isolation: "REPEATABLE READ"
+      timeout: "2s"
+      steps:
+        # Read two balances (simulate invariant x+y>=0)
+        - sql: "SELECT v FROM kv WHERE k IN ($1, $2)"
+          args:
+            - choice: {from: ["k1","k2","k3","k4"]}
+            - choice: {from: ["k1","k2","k3","k4"]}
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+        # Write to one key (potential invariant violation)
+        - sql: "UPDATE kv SET v = v - 1 WHERE k=$1"
+          args: ["$1"]
+          elle: {f: ":write", key: "$1"}
+        - sql: "UPDATE kv SET v = v + 1 WHERE k=$2"
+          args: ["$2"]
+          elle: {f: ":write", key: "$2"}
+
+    # Transaction 2: Simple update with read-write dependency
+    - name: update-and-check
+      isolation: "READ COMMITTED"
+      timeout: "2s"
+      steps:
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: [{choice: {from: ["k1","k2","k3","k4"]}}]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+        - sql: "UPDATE kv SET v = v + 1, ts = $2 WHERE k=$1"
+          args:
+            - "$1"
+            - now_ns: {}
+          elle: {f: ":write", key: "$1"}
+
+    # Transaction 3: Reader to induce read skew
+    - name: read-pair
+      isolation: "READ COMMITTED"
+      timeout: "1s"
+      steps:
+        - sql: "SELECT v FROM kv WHERE k IN ($1, $2)"
+          args:
+            - choice: {from: ["k1","k2","k3","k4"]}
+            - choice: {from: ["k1","k2","k3","k4"]}
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+
+  # Relative frequencies of transactions
+  mix:
+    - txn: transfer
+      weight: 0.4
+    - txn: update-and-check
+      weight: 0.4
+    - txn: read-pair
+      weight: 0.2
+
+scheduling:
+  duration: "10s"
+  clients: 10
+  barrier_every: 0
+  random_kill_pct: 0
+  jitter_ms_min: 1
+  jitter_ms_max: 10
