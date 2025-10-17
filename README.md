@@ -1,0 +1,120 @@
+## Feedback-Driven Transaction Fuzzer
+
+This repository hosts an Elle-style transaction fuzzer with an adaptive feedback loop.
+The workflow is:
+
+1. Generate a workload configuration and execute it with the Go runner to produce an Elle history (`.edn`).
+2. Analyze the history with `scripts/analyze_history.py` to extract dependency edges, cycles, and near-cycle opportunities.
+3. Feed those metrics into `scripts/feedback_fuzzer.py`, which tunes the next workload (hot keys, mix weights, concurrency) and repeats.
+
+The goal is to converge on workloads that expose transactional anomalies by continuously tightening contention around the most promising keys and transaction patterns.
+
+---
+
+### Requirements
+
+- Go toolchain (for `go run ./cmd/runner`).
+- A reachable PostgreSQL instance; set `DATABASE_URL` for the runner.
+- Python 3.9+ with the following packages: `pyyaml`, `edn_format`, `networkx`, `matplotlib`.
+
+Install the Python dependencies (ideally inside a virtualenv):
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install pyyaml edn_format networkx matplotlib
+```
+
+---
+
+### Quick Start
+
+1. **Run Docker**
+```bash
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/testdb?sslmode=disable"
+docker start txfuzz-pg
+```
+
+2. **Seed workload** – copy one of the sample configs under `workloads/`.
+
+3. **Run the feedback loop**:
+
+```bash
+python scripts/feedback_fuzzer.py \
+    --config workloads/example.yaml \
+    --iterations 3 \
+    --output-dir runs/demo \
+    --runner-cmd "go run ./cmd/runner" \
+    --verbose
+```
+
+Per iteration the fuzzer will:
+
+- Write `runs/demo/iter_XX/workload.yaml` – the workload used for that run.
+- Execute the runner to produce `runs/demo/iter_XX/history.edn`.
+- Summarize the analysis in `runs/demo/iter_XX/analysis.json`.
+- Update key hot-spots, mix weights, and client counts for the next iteration.
+
+Use `--skip-run` together with a custom `--runner-cmd` (e.g., a copier script) when you want to replay pre-generated histories.
+
+---
+
+### Inspecting Histories Manually
+
+You can invoke the analyzer directly on any Elle history:
+
+```bash
+python scripts/analyze_history.py history.edn --skip-graph
+```
+
+The analyzer prints:
+
+- Edge counts (WR/WW/RW), dependency density, and strongly connected components.
+- Detected cycles and near-miss paths (possible G2 anomalies).
+- Suggestions for intensifying contention (e.g., hot keys, scheduling tweaks).
+- Optional PNG visualization (`dependency_graph.png`) when the graph is small enough.
+
+Because the analysis module exposes structured APIs (`AnalysisResult`, `FeedbackResult`), you can import it from other tooling to build custom heuristics.
+
+---
+
+### Feedback Heuristics
+
+`scripts/feedback_fuzzer.py` implements conservative heuristics:
+
+- **Hot keys**: targets up to four keys extracted from near-cycle paths and key-pressure counts; these replace `choice` lists to concentrate contention.
+- **Mix balancing**: write-heavy transactions gain relative weight when edge density is low, while predominantly read-only flows are down-weighted once dependency edges saturate.
+- **Scheduling**: client concurrency scales up when edges-per-transaction lag, and a light barrier cadence is introduced once near cycles appear to better synchronize conflicting operations.
+- **Schema init**: by default only the first iteration honors `init_schema`; later iterations skip it to keep accumulated state intact (override with `--keep-schema-init`).
+
+All decisions and the resulting knobs (weights, clients, target keys) are logged when `--verbose` is set, and they are fully captured in the iteration configs for reproducibility.
+
+---
+
+### Suggested Workflow
+
+1. Start with a broad workload (many keys, mixed reads/writes).
+2. Run several feedback iterations to let the fuzzer focus on problematic keys and increase concurrency.
+3. Inspect the generated `analysis.json` files – look for growing edge counts, emerging cycles, and shorter near cycles.
+4. When a cycle is detected, rerun the offending iteration with `scripts/analyze_history.py` to visualize and understand the anomaly.
+5. Adjust workload templates as needed (e.g., add new transaction steps) and continue iterating.
+
+---
+
+### Troubleshooting
+
+- **Runner fails immediately**: confirm `DATABASE_URL` is exported and reachable; use `cmd/runner`'s `--init` once to initialize schema.
+- **No edges detected**: increase clients (`scheduling.clients`) or decrease the key set size; the feedback loop handles both automatically.
+- **Graph rendering skipped**: histograms with more than `--max-graph-nodes` (default 200) are intentionally not rendered; rerun the analyzer with a higher limit if needed.
+- **Python import errors**: install the dependencies listed above and ensure you activate the virtual environment before running the scripts.
+
+---
+
+### Project Structure
+
+- `cmd/runner/` – Go entry point that exercises workloads against the target database and writes Elle histories.
+- `internal/` – Go support packages (config parsing, workload execution, history writer).
+- `scripts/analyze_history.py` – Rich EDN history analysis with reusable APIs.
+- `scripts/feedback_fuzzer.py` – Iterative workload tuner that drives the run → analyze → mutate loop.
+
+Use these building blocks to craft custom fuzzing campaigns or integrate the feedback loop into CI pipelines that guard against transactional anomalies.
