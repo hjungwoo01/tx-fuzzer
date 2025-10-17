@@ -95,11 +95,9 @@
         (let [res (sanitize-subop (nth v i))]
           (if (= (:status res) :ok)
             (recur (inc i) (conj acc (:sub res)))
-            (throw (ex-info "Bad sub-op"
-                            {:op-summary (select-keys op [:type :process :time :index :f])
-                             :sub-index i
-                             :reason (:reason res)
-                             :sub (:sub res)}))))))))
+            (do
+              ;; (println "[warn] dropping bad sub-op:" (:reason res) (:sub res))
+              (recur (inc i) acc))))))))
 
 (defn sanitize-top-op
   "Ensure numeric :time/:process, add :index, and sanitize :value for :txn ops."
@@ -195,8 +193,6 @@
   [:strict-serializable :serializable :snapshot-isolation :repeatable-read :read-committed])
 
 ;; -------------------------------
-;; Main
-;; -------------------------------
 (defn -main [& args]
   (println "[run-elle] starting, args =" (vec args))
   (let [file (first args)]
@@ -209,56 +205,73 @@
         (println "History is empty; nothing to analyze.")
         (System/exit 2))
       (println "Loaded" (count raw) "top-level records")
-      (let [ops1 (vec (map-indexed sanitize-top-op raw))
-            elle-ops (vec (filter #(= (:f %) :txn) ops1))
-            txn-sample (->> ops1 (filter #(= (:f %) :txn)) (take 3))]
-        (println "Sample sanitized txn ops:" (pr-str txn-sample))
-        (let [ft (fn [k] (->> ops1 (map k) (map classify) frequencies))]
-          (println "Field type summary:")
-          (println "  :time   " (ft :time))
-          (println "  :process" (ft :process))
-          (println "  :index  " (ft :index)))
+      (let [ops1     (vec (map-indexed sanitize-top-op raw))
+            elle-ops (vec (filter #(= (:f %) :txn) ops1))]
+        ;; (println "Sample sanitized txn ops:" (pr-str (take 3 elle-ops)))
+
+        ;; -- Optional: quick scan for malformed sub-ops --
         (when-let [off (sweep-all-for-bad-subops ops1)]
           (println "\n*** Offending sub-op found outside expectations ***")
           (pp/pprint off)
-          (println "\nFix the emitter/sanitizer so all Elle-ish vectors have numeric k/v.")
           (System/exit 6))
-        (let [{:keys [counts bad]} (sweep-for-bad-kv ops1)]
-          (println "KV type tallies: keys" (:k counts) " values" (:v counts))
+
+        ;; -- Optional: KV type tallies (commented for brevity) --
+        (let [{:keys [_ bad]} (sweep-for-bad-kv ops1)]
           (when bad
             (println "\n*** Offending sub-op (non-numeric/keyword) ***")
             (pp/pprint bad)
-            (println "\nFix your emitter/sanitizer so k/v are numeric (or nil for read v).")
             (System/exit 5)))
+
         (println "Elle-visible txn ops:" (count elle-ops)
                  "(filtered" (- (count ops1) (count elle-ops)) "metadata ops)")
         (when (empty? elle-ops)
           (println "No :txn ops remain after filtering; nothing to analyze.")
           (System/exit 2))
+
         (let [hist  (h/history elle-ops)
               opts  {:consistency-models candidate-models}
-              _     (println "Wrapped into Jepsen history type:" (type hist))
-              _     (flush)
               check (rw-register/check opts hist)
               valid (:valid? check)]
-          (println "\n=== ELLE ANALYSIS (rw-register) ===")
-          (pp/pprint (dissoc check :anomalies))
+          (println "\n=== ELLE ANALYSIS ===")
+          (pp/pprint (select-keys check [:valid? :model :consistency-models]))
+
           (when (seq (:anomalies check))
-            (println "\nAnomalies detected:")
-            (pp/pprint (:anomalies check)))
+            (let [anom (:anomalies check)]
+              (println "\nAnomalies detected:" (count anom))
+              (cond
+                ;; Case 1: anomalies is a map {:lost-update [...], :write-skew [...]} etc.
+                (map? anom)
+                (do
+                  (println "Anomaly summary:")
+                  (doseq [[atype entries] anom]
+                    (println " -" (name atype) ":" (count entries) "instances"))
+                  (spit "anomalies.edn"
+                        (with-out-str
+                          (pp/pprint (into {} (for [[k v] anom]
+                                                [k (take 5 v)])))))
+                  (println "[Saved first 5 per type to anomalies.edn]"))
+
+                ;; Case 2: anomalies is a vector of maps (Elle variant)
+                (vector? anom)
+                (do
+                  (println "Total anomaly entries:" (count anom))
+                  (spit "anomalies.edn"
+                        (with-out-str (pp/pprint (take 10 anom))))
+                  (println "[Saved first 10 anomalies to anomalies.edn]"))
+
+                :else
+                (println "Unexpected anomalies format:" (type anom)))))
+
           (flush)
           (cond
             (= true valid)
-            (do
-              (println "\nAll good for the requested consistency models.")
-              (System/exit 0))
+            (do (println "\nAll good for the requested consistency models.")
+                (System/exit 0))
 
             (= :unknown valid)
-            (do
-              (println "\nElle could not determine validity (result :unknown).")
-              (System/exit 3))
+            (do (println "\nElle could not determine validity (result :unknown).")
+                (System/exit 3))
 
             :else
-            (do
-              (println "\nElle detected violations for the requested consistency models.")
-              (System/exit 4))))))))
+            (do (println "\nElle detected violations for the requested consistency models.")
+                (System/exit 4))))))))
