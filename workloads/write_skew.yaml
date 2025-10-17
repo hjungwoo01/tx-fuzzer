@@ -7,56 +7,56 @@ init_schema: false
 workload:
   datatype: register
   transactions:
-    # Transaction 1: Cross-key write (potential for write skew)
+    # Transaction 1: classic write-skew (two reads, two writes)
     - name: transfer
       isolation: "REPEATABLE READ"
       timeout: "2s"
       steps:
-        # Read two balances (simulate invariant x+y>=0)
-        - sql: "SELECT v FROM kv WHERE k IN ($1, $2)"
-          args:
-            - choice: {from: ["k1","k2","k3","k4"]}
-            - choice: {from: ["k1","k2","k3","k4"]}
+        # Choose two *distinct* keys for cross-dependency
+        - sql: "BEGIN;"
+        - sql: "SELECT v FROM kv WHERE k = $1"
+          args: [{choice: {from: [0,1,2,3]}}]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
-        # Write to one key (potential invariant violation)
-        - sql: "UPDATE kv SET v = v - 1 WHERE k=$1"
+        - sql: "SELECT v FROM kv WHERE k = $2"
+          args: [{choice: {from: [0,1,2,3]}}]
+          elle: {f: ":read", key: "$2", value_from_result_col: 0}
+
+        # decrement one key, increment another
+        - sql: "UPDATE kv SET v = v - 1 WHERE k = $1"
           args: ["$1"]
           elle: {f: ":write", key: "$1"}
-        - sql: "UPDATE kv SET v = v + 1 WHERE k=$2"
+        - sql: "UPDATE kv SET v = v + 1 WHERE k = $2"
           args: ["$2"]
           elle: {f: ":write", key: "$2"}
+        - sql: "COMMIT;"
 
-    # Transaction 2: Simple update with read-write dependency
-    - name: update-and-check
+    # Transaction 2: simple single-key update
+    - name: update
       isolation: "READ COMMITTED"
       timeout: "2s"
       steps:
-        - sql: "SELECT v FROM kv WHERE k=$1"
-          args: [{choice: {from: ["k1","k2","k3","k4"]}}]
+        - sql: "BEGIN;"
+        - sql: "SELECT v FROM kv WHERE k = $1"
+          args: [{choice: {from: [0,1,2,3]}}]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
-        - sql: "UPDATE kv SET v = v + 1, ts = $2 WHERE k=$1"
-          args:
-            - "$1"
-            - now_ns: {}
+        - sql: "UPDATE kv SET v = v + 1 WHERE k = $1"
+          args: ["$1"]
           elle: {f: ":write", key: "$1"}
+        - sql: "COMMIT;"
 
-    # Transaction 3: Reader to induce read skew
+    # Transaction 3: read-only checker
     - name: read-pair
       isolation: "READ COMMITTED"
       timeout: "1s"
       steps:
-        - sql: "SELECT v FROM kv WHERE k IN ($1, $2)"
-          args:
-            - choice: {from: ["k1","k2","k3","k4"]}
-            - choice: {from: ["k1","k2","k3","k4"]}
-          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+        - sql: "SELECT v FROM kv WHERE k IN (0,1,2,3)"
+          elle: {f: ":read", key: "all", value_from_result_col: 0}
 
-  # Relative frequencies of transactions
   mix:
     - txn: transfer
-      weight: 0.4
-    - txn: update-and-check
-      weight: 0.4
+      weight: 0.5
+    - txn: update
+      weight: 0.3
     - txn: read-pair
       weight: 0.2
 
@@ -66,4 +66,5 @@ scheduling:
   barrier_every: 0
   random_kill_pct: 0
   jitter_ms_min: 1
-  jitter_ms_max: 10
+  jitter_ms_max: 5
+  
