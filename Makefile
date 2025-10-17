@@ -1,5 +1,5 @@
 SEED ?= workloads/seed.yaml
-WORKLOAD ?= workloads/example.yaml
+WORKLOAD ?= workloads/write_skew.yaml
 
 OUT ?= history.edn
 HIST ?= history.edn
