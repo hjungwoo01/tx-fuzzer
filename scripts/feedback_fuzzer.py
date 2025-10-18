@@ -6,7 +6,7 @@ Workflow per iteration:
     1. Materialize a workload config derived from the previous iteration's feedback.
     2. Run the tx runner to produce an Elle-compatible history.
     3. Analyze the history using scripts.analyze_history for dependency metrics and feedback.
-    4. Persist the analysis artifacts and mutate the workload for the next iteration.
+    4. Persist the analysis artifacts, render a minimal dependency graph highlighting the missing edge, and mutate the workload for the next iteration.
 
 Example usage:
     python scripts/feedback_fuzzer.py \
@@ -14,6 +14,10 @@ Example usage:
         --iterations 3 \
         --output-dir runs/demo \
         --runner-cmd "go run ./cmd/runner"
+    python scripts/feedback_fuzzer.py \
+        --workload write_skew \
+        --output-dir runs/write-skew-loop \
+        --iterations 5
 
 Dependencies:
     pip install pyyaml edn_format networkx matplotlib
@@ -28,17 +32,13 @@ import os
 import shlex
 import subprocess
 import sys
+import yaml
+import networkx as nx
+import matplotlib.pyplot as plt
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
-
-try:
-    import yaml
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "[ERROR] Missing dependency PyYAML. Install with `pip install pyyaml`."
-    ) from exc
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
     # When executed from repository root we can import through the scripts package.
@@ -51,7 +51,6 @@ except ImportError:  # pragma: no cover - fallback for direct invocation
         AnalysisResult,
         analyze_history_file,
     )
-
 
 RunnerCommand = Sequence[str]
 
@@ -72,8 +71,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        required=True,
-        help="Base workload YAML config.",
+        help="Path to base workload YAML config (overrides --workload).",
+    )
+    parser.add_argument(
+        "--workload",
+        type=str,
+        help="Name of a workload under --workload-dir (e.g. 'example').",
+    )
+    parser.add_argument(
+        "--workload-dir",
+        type=Path,
+        default=Path("workloads"),
+        help="Directory containing named workload YAML files.",
     )
     parser.add_argument(
         "--iterations",
@@ -134,6 +143,21 @@ def save_yaml(data: Dict[str, Any], path: Path) -> None:
 
 def ensure_output_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_base_config(args: argparse.Namespace) -> Path:
+    if args.config and args.workload:
+        raise SystemExit("Specify only one of --config or --workload.")
+    if args.config:
+        return args.config
+    if args.workload:
+        candidate = args.workload_dir / f"{args.workload}.yaml"
+        if not candidate.exists():
+            raise SystemExit(
+                f"Workload '{args.workload}' not found under {args.workload_dir}."
+            )
+        return candidate
+    raise SystemExit("One of --config or --workload is required.")
 
 
 def tokenize_runner(cmd: str) -> RunnerCommand:
@@ -346,6 +370,15 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
             }
             for nc in result.feedback.near_cycles
         ],
+        "candidate_missing_edges": [
+            {
+                "source": nc.end,
+                "target": nc.start,
+                "via": nc.via,
+                "key": nc.key,
+            }
+            for nc in result.feedback.near_cycles
+        ],
         "suggestions": result.feedback.suggestions,
         "key_pressure": result.feedback.key_pressure,
         "truncated_feedback": result.feedback.truncated,
@@ -358,6 +391,76 @@ def save_analysis_json(result: AnalysisResult, path: Path) -> None:
         json.dump(data, fh, indent=2, sort_keys=False)
 
 
+def draw_minimal_graph(result: AnalysisResult, path: Path) -> Optional[str]:
+    if not result.feedback.near_cycles:
+        print("[WARN] No near cycles detected; skipping minimal graph export.")
+        return None
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    near = result.feedback.near_cycles[0]
+    g = nx.DiGraph()
+    nodes = {near.start, near.via, near.end}
+    for node in nodes:
+        g.add_node(node)
+
+    edge_labels: Dict[Tuple[str, str], str] = {}
+
+    def copy_edge(src: str, dst: str) -> None:
+        if result.graph.has_edge(src, dst):
+            data = result.graph[src][dst]
+            label = data.get("label", "")
+            g.add_edge(src, dst, label=label, missing=False)
+            edge_labels[(src, dst)] = label
+
+    copy_edge(near.start, near.via)
+    copy_edge(near.via, near.end)
+
+    missing_label = f"add edge on key {near.key}" if near.key is not None else "add conflicting edge"
+    g.add_edge(near.end, near.start, label=missing_label, missing=True)
+    edge_labels[(near.end, near.start)] = missing_label
+
+    plt.figure(figsize=(6, 4))
+    pos = nx.circular_layout(g)
+    nx.draw_networkx_nodes(g, pos, node_size=1400, node_color="#1f77b4", alpha=0.9)
+    nx.draw_networkx_labels(g, pos, font_size=10, font_color="white")
+
+    existing_edges = [(u, v) for u, v, data in g.edges(data=True) if not data.get("missing")]
+    missing_edges = [(u, v) for u, v, data in g.edges(data=True) if data.get("missing")]
+
+    if existing_edges:
+        nx.draw_networkx_edges(
+            g,
+            pos,
+            edgelist=existing_edges,
+            edge_color="#2ca02c",
+            arrows=True,
+            arrowstyle="->",
+            arrowsize=20,
+            width=2.0,
+        )
+    if missing_edges:
+        nx.draw_networkx_edges(
+            g,
+            pos,
+            edgelist=missing_edges,
+            edge_color="#d62728",
+            arrows=True,
+            arrowstyle="->",
+            arrowsize=20,
+            width=2.5,
+            style="dashed",
+        )
+
+    nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels, font_size=9, font_color="#333333")
+    plt.title("Minimal dependency subgraph", fontsize=12)
+    plt.tight_layout()
+    plt.savefig(path, dpi=200)
+    plt.close()
+    description = f"{near.end} -> {near.start} on key {near.key}" if near.key is not None else f"{near.end} -> {near.start}"
+    print(f"[INFO] Saved minimal dependency graph to {path} (missing edge {description})")
+    return description
+
+
 def maybe_load_history(history_path: Path) -> Optional[AnalysisResult]:
     if not history_path.exists():
         print(f"[WARN] History file {history_path} missing; skipping analysis.")
@@ -366,7 +469,9 @@ def maybe_load_history(history_path: Path) -> Optional[AnalysisResult]:
 
 
 def orchestrate(args: argparse.Namespace) -> None:
-    base_cfg = load_yaml(args.config)
+    config_path = resolve_base_config(args)
+    base_cfg = load_yaml(config_path)
+    print(f"[CONFIG] Using base workload {config_path}")
     ensure_output_dir(args.output_dir)
     runner_cmd = tokenize_runner(args.runner_cmd)
     context = IterationContext(
@@ -386,17 +491,17 @@ def orchestrate(args: argparse.Namespace) -> None:
             keep_schema_init=args.keep_schema_init,
         )
 
-        config_path = iter_dir / "workload.yaml"
+        iter_cfg_path = iter_dir / "workload.yaml"
         history_path = iter_dir / "history.edn"
         analysis_path = iter_dir / "analysis.json"
 
-        save_yaml(iter_cfg, config_path)
-        print(f"[ITER {iteration}] Config saved to {config_path}")
+        save_yaml(iter_cfg, iter_cfg_path)
+        print(f"[ITER {iteration}] Config saved to {iter_cfg_path}")
         print(f"[ITER {iteration}] Target keys: {context.last_target_keys or context.base_keys}")
 
         if not args.skip_run:
             try:
-                run_tx_runner(runner_cmd, config_path, history_path)
+                run_tx_runner(runner_cmd, iter_cfg_path, history_path)
             except subprocess.CalledProcessError as exc:
                 print(f"[ERROR] Runner failed (iteration {iteration}): {exc}")
                 break
@@ -412,6 +517,12 @@ def orchestrate(args: argparse.Namespace) -> None:
             max_near_paths=max(args.max_near_cycles, 1),
         )
         save_analysis_json(result, analysis_path)
+        minimal_graph_path = iter_dir / "minimal_dependency_graph.png"
+        missing_edge = draw_minimal_graph(result, minimal_graph_path)
+        if missing_edge:
+            print(
+                f"[ITER {iteration}] Missing edge to target → {missing_edge}"
+            )
         print(
             f"[ITER {iteration}] edges={sum(result.edge_counts.values())} "
             f"edges/txn={result.edges_per_txn:.3f} cycles={len(result.cycles)} "
@@ -423,9 +534,17 @@ def orchestrate(args: argparse.Namespace) -> None:
                 print(f"    {suggestion}")
 
         current_cfg = build_next_config(iter_cfg, result, context)
+        next_mix = current_cfg.get("workload", {}).get("mix", [])
+        sched = current_cfg.get("scheduling", {})
+        mix_str = ", ".join(
+            f"{item.get('txn')}:{item.get('weight')}" for item in next_mix
+        )
+        summary_msg = (
+            f"[ITER {iteration}] Next workload → clients={sched.get('clients')} "
+            f"barrier_every={sched.get('barrier_every', 0)} mix=[{mix_str}]"
+        )
+        print(summary_msg)
         if args.verbose:
-            next_mix = current_cfg.get("workload", {}).get("mix", [])
-            sched = current_cfg.get("scheduling", {})
             print(
                 f"[ITER {iteration}] next target keys: {context.last_target_keys} "
                 f"clients={sched.get('clients')} mix={next_mix}"

@@ -161,6 +161,7 @@ func Run(ctx context.Context, env *Env) error {
 					if hasSelect(st.SQL) {
 						row, err := tx.QueryRow(tctx, st.SQL, args...)
 						if err != nil {
+							fmt.Printf("[warn] process %d step %d query error: %v (sql=%s)\n", process, si, err, st.SQL)
 							_ = tx.Rollback(tctx)
 							cancel()
 							fail = true
@@ -172,6 +173,7 @@ func Run(ctx context.Context, env *Env) error {
 						var scanVal any
 						if st.Elle != nil && st.Elle.ValueFromResultCol != nil {
 							if err := row.Scan(&scanVal); err != nil {
+								fmt.Printf("[warn] process %d step %d scan error: %v (sql=%s)\n", process, si, err, st.SQL)
 								_ = tx.Rollback(tctx)
 								cancel()
 								fail = true
@@ -183,6 +185,7 @@ func Run(ctx context.Context, env *Env) error {
 						} else {
 							var dummy any
 							if err := row.Scan(&dummy); err != nil {
+								fmt.Printf("[warn] process %d step %d scan error: %v (sql=%s)\n", process, si, err, st.SQL)
 								_ = tx.Rollback(tctx)
 								cancel()
 								fail = true
@@ -209,6 +212,7 @@ func Run(ctx context.Context, env *Env) error {
 						}
 					} else {
 						if _, err := tx.Exec(tctx, st.SQL, args...); err != nil {
+							fmt.Printf("[warn] process %d step %d exec error: %v (sql=%s)\n", process, si, err, st.SQL)
 							_ = tx.Rollback(tctx)
 							cancel()
 							fail = true
