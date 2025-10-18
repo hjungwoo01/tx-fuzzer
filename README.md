@@ -85,6 +85,28 @@ Because the analysis module exposes structured APIs (`AnalysisResult`, `Feedback
 
 ---
 
+### Adaptive Feedback Loop
+
+For an end-to-end, self-documenting campaign, use the adaptive loop:
+
+```bash
+python scripts/adaptive_feedback.py \
+    --history history.edn \
+    --prev-workload workloads/current.yaml \
+    --output-root runs \
+    --iterations 2 \
+    --execute
+```
+
+`adaptive_feedback.py` differs from the other helpers:
+
+- **vs `scripts/analyze_history.py`** – the analyzer emits metrics and suggestions but leaves follow-up decisions to you. `adaptive_feedback.py` consumes those insights automatically, ranks near-miss triples, and produces ready-to-run workloads plus focused graphs.
+- **vs `scripts/feedback_fuzzer.py`** – the original fuzzer mutates workloads using heuristics but relies on the CLI runner for iteration control. The adaptive module wraps the entire cycle: it copies the produced history/workload into `runs/iter_XX/`, renders both the full and minimal dependency graphs, explains the mutations in `notes.md`, and can immediately execute the next workload.
+
+Use it when you want reproducible artefacts per iteration and a targeted push toward closing specific missing edges.
+
+---
+
 ### Feedback Heuristics
 
 `scripts/feedback_fuzzer.py` implements conservative heuristics:
@@ -123,5 +145,6 @@ All decisions and the resulting knobs (weights, clients, target keys) are logged
 - `internal/` – Go support packages (config parsing, workload execution, history writer).
 - `scripts/analyze_history.py` – Rich EDN history analysis with reusable APIs.
 - `scripts/feedback_fuzzer.py` – Iterative workload tuner that drives the run → analyze → mutate loop.
+- `scripts/adaptive_feedback.py` – Full feedback engine that archives each iteration, renders minimal near-miss graphs, and optionally re-runs the workload automatically.
 
 Use these building blocks to craft custom fuzzing campaigns or integrate the feedback loop into CI pipelines that guard against transactional anomalies.
