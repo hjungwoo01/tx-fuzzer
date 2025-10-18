@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Feedback-driven workload fuzzer that iteratively adjusts workloads based on history analysis.
 
