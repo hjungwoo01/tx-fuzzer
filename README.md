@@ -48,11 +48,18 @@ python scripts/feedback_fuzzer.py \
     --verbose
 ```
 
+You can also reference workloads by name:
+
+```bash
+python scripts/feedback_fuzzer.py --workload write_skew --iterations 5 --output-dir runs/write-skew
+```
+
 Per iteration the fuzzer will:
 
 - Write `runs/demo/iter_XX/workload.yaml` – the workload used for that run.
 - Execute the runner to produce `runs/demo/iter_XX/history.edn`.
 - Summarize the analysis in `runs/demo/iter_XX/analysis.json`.
+- Render `runs/demo/iter_XX/minimal_dependency_graph.png`, a tiny subgraph that highlights the missing dependency edge the next workload should try to force.
 - Update key hot-spots, mix weights, and client counts for the next iteration.
 
 Use `--skip-run` together with a custom `--runner-cmd` (e.g., a copier script) when you want to replay pre-generated histories.
