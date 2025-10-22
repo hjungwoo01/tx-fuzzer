@@ -74,9 +74,10 @@ type ReplayStep struct {
 }
 
 type Replay struct {
-	Enabled      bool         `yaml:"enabled"`
-	Transactions []ReplayTxn  `yaml:"transactions,omitempty"`
-	Schedule     []ReplayStep `yaml:"schedule,omitempty"`
+	Enabled      bool             `yaml:"enabled"`
+	Transactions []ReplayTxn      `yaml:"transactions,omitempty"`
+	Schedule     []ReplayStep     `yaml:"schedule,omitempty"`
+	PauseAfter   map[string][]int `yaml:"pause_after,omitempty"`
 }
 
 type Root struct {
