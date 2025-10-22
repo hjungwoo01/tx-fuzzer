@@ -20,11 +20,11 @@ import (
 
 func main() {
 	dsn := os.Getenv("DATABASE_URL")
-    if dsn == "" {
-        log.Fatal("DATABASE_URL environment variable not set")
-    }
+	if dsn == "" {
+		log.Fatal("DATABASE_URL environment variable not set")
+	}
 
-    testDBConnection(dsn)
+	testDBConnection(dsn)
 
 	cfgPath := flag.String("config", "workloads/example.yaml", "YAML config")
 	initSchema := flag.Bool("init", false, "init schema and exit")
@@ -73,8 +73,14 @@ func main() {
 	env := &runner.Env{
 		Drv: drv, Cfg: cfg, Hist: hw, Start: time.Now(),
 	}
-	if err := runner.Run(ctx, env); err != nil {
-		log.Fatal(err)
+	var runErr error
+	if cfg.Replay.Enabled {
+		runErr = runner.RunReplay(ctx, env)
+	} else {
+		runErr = runner.Run(ctx, env)
+	}
+	if runErr != nil {
+		log.Fatal(runErr)
 	}
 
 	if err := hw.Close(); err != nil {

@@ -59,6 +59,26 @@ type Scheduling struct {
 	RandomKillPct        int           `yaml:"random_kill_pct,omitempty"`
 }
 
+type ReplayTxn struct {
+	Alias   string        `yaml:"alias"`
+	Txn     string        `yaml:"txn"`
+	Process int           `yaml:"process,omitempty"`
+	Timeout time.Duration `yaml:"timeout,omitempty"`
+}
+
+type ReplayStep struct {
+	Alias  string        `yaml:"alias,omitempty"`
+	Action string        `yaml:"action,omitempty"`
+	Steps  int           `yaml:"steps,omitempty"`
+	Sleep  time.Duration `yaml:"sleep,omitempty"`
+}
+
+type Replay struct {
+	Enabled      bool         `yaml:"enabled"`
+	Transactions []ReplayTxn  `yaml:"transactions,omitempty"`
+	Schedule     []ReplayStep `yaml:"schedule,omitempty"`
+}
+
 type Root struct {
 	Database   DBConfig   `yaml:"database"`
 	Workload   Workload   `yaml:"workload"`
@@ -66,6 +86,7 @@ type Root struct {
 	Seed       int64      `yaml:"seed,omitempty"`
 	Out        string     `yaml:"out,omitempty"`
 	InitSchema bool       `yaml:"init_schema,omitempty"`
+	Replay     Replay     `yaml:"replay,omitempty"`
 }
 
 func Load(path string) (*Root, error) {
