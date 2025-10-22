@@ -64,6 +64,7 @@ class Transaction:
     start_time: Optional[int]
     end_time: Optional[int]
     index: int  # Commit order in history
+    template: Optional[str]
 
     def writes(self) -> Iterable[Operation]:
         return (op for op in self.ops if op.op_type == "w")
@@ -103,14 +104,26 @@ class NearCycle:
     key: Any
     start_edge_types: Tuple[str, ...]
     via_edge_types: Tuple[str, ...]
+    start_template: Optional[str] = None
+    via_template: Optional[str] = None
+    end_template: Optional[str] = None
 
     def describe(self) -> str:
         key_part = f"key {self.key}" if self.key is not None else "shared keys"
         start_types = "/".join(self.start_edge_types) if self.start_edge_types else "?"
         via_types = "/".join(self.via_edge_types) if self.via_edge_types else "?"
+        tmpl_bits = []
+        if self.start_template:
+            tmpl_bits.append(f"{self.start}:{self.start_template}")
+        if self.via_template:
+            tmpl_bits.append(f"{self.via}:{self.via_template}")
+        if self.end_template:
+            tmpl_bits.append(f"{self.end}:{self.end_template}")
+        tmpl_part = " | ".join(tmpl_bits)
+        detail = f" (templates {tmpl_part})" if tmpl_part else ""
         return (
             f"{self.start}->{self.via}->{self.end} via {key_part} "
-            f"(edges {start_types} then {via_types})"
+            f"(edges {start_types} then {via_types}){detail}"
         )
 
 
@@ -262,6 +275,20 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
                         )
                     )
             if status == "ok":
+                meta = {}
+                start_meta = start.get("meta") if isinstance(start, Mapping) else None
+                if isinstance(start_meta, Mapping):
+                    meta.update(start_meta)
+                event_meta = event.get("meta") if isinstance(event, Mapping) else None
+                if isinstance(event_meta, Mapping):
+                    meta.update(event_meta)
+
+                template_name = None
+                if meta:
+                    raw_name = meta.get("txn_name") or meta.get("name")
+                    if isinstance(raw_name, str):
+                        template_name = raw_name
+
                 transactions.append(
                     Transaction(
                         txn_id=str(txn_id),
@@ -271,6 +298,7 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
                         start_time=start.get("time"),
                         end_time=event.get("time"),
                         index=len(transactions),
+                        template=template_name,
                     )
                 )
         # Ignore other terminal types like :info/:fail for now.
@@ -410,6 +438,9 @@ def derive_feedback(
 
             start_edge_types = tuple(sorted(graph[src][mid].get("types", set())))
             via_edge_types = tuple(sorted(graph[mid][dst].get("types", set())))
+            start_txn = txn_lookup.get(src)
+            via_txn = txn_lookup.get(mid)
+            end_txn = txn_lookup.get(dst)
             near_cycles.append(
                 NearCycle(
                     start=src,
@@ -418,6 +449,9 @@ def derive_feedback(
                     key=key_hint,
                     start_edge_types=start_edge_types,
                     via_edge_types=via_edge_types,
+                    start_template=start_txn.template if start_txn else None,
+                    via_template=via_txn.template if via_txn else None,
+                    end_template=end_txn.template if end_txn else None,
                 )
             )
 

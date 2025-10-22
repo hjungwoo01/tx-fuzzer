@@ -347,6 +347,67 @@ def build_next_config(
     return next_cfg
 
 
+def build_replay_config(
+    cfg: Dict[str, Any],
+    result: AnalysisResult,
+) -> Optional[Dict[str, Any]]:
+    if not result.feedback.near_cycles:
+        return None
+
+    near = result.feedback.near_cycles[0]
+    triplet = [
+        ("start", near.start_template),
+        ("via", near.via_template),
+        ("end", near.end_template),
+    ]
+
+    if any(template is None for _, template in triplet):
+        return None
+
+    workload = cfg.get("workload", {})
+    templates = {
+        txn.get("name")
+        for txn in workload.get("transactions", [])
+        if isinstance(txn, dict)
+    }
+
+    missing = [
+        (alias, template)
+        for alias, template in triplet
+        if template not in templates
+    ]
+    if missing:
+        return None
+
+    replay_cfg = copy.deepcopy(cfg)
+    replay_cfg["replay"] = {
+        "enabled": True,
+        "transactions": [
+            {"alias": alias, "txn": template} for alias, template in triplet
+        ],
+        "schedule": [
+            {"alias": "start", "action": "step", "steps": 0},
+            {"alias": "via", "action": "step", "steps": 0},
+            {"alias": "end", "action": "step", "steps": 0},
+            {"alias": "via", "action": "commit"},
+            {"alias": "end", "action": "commit"},
+            {"alias": "start", "action": "commit"},
+        ],
+    }
+
+    if near.key is not None:
+        replay_cfg["replay"]["focus_key"] = near.key
+        retarget_transactions(
+            replay_cfg.get("workload", {}).get("transactions", []),
+            [near.key],
+        )
+
+    scheduling = replay_cfg.setdefault("scheduling", {})
+    scheduling["clients"] = 1
+    scheduling.pop("barrier_every", None)
+    return replay_cfg
+
+
 def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
     total_edges = sum(result.edge_counts.values())
     return {
@@ -366,6 +427,9 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "key": nc.key,
                 "start_edge_types": list(nc.start_edge_types),
                 "via_edge_types": list(nc.via_edge_types),
+                "start_template": nc.start_template,
+                "via_template": nc.via_template,
+                "end_template": nc.end_template,
             }
             for nc in result.feedback.near_cycles
         ],
@@ -375,6 +439,9 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "target": nc.start,
                 "via": nc.via,
                 "key": nc.key,
+                "source_template": nc.end_template,
+                "target_template": nc.start_template,
+                "via_template": nc.via_template,
             }
             for nc in result.feedback.near_cycles
         ],
@@ -521,6 +588,14 @@ def orchestrate(args: argparse.Namespace) -> None:
         if missing_edge:
             print(
                 f"[ITER {iteration}] Missing edge to target → {missing_edge}"
+            )
+
+        replay_cfg = build_replay_config(iter_cfg, result)
+        if replay_cfg:
+            replay_cfg_path = iter_dir / "replay.yaml"
+            save_yaml(replay_cfg, replay_cfg_path)
+            print(
+                f"[ITER {iteration}] Deterministic replay config → {replay_cfg_path}"
             )
         print(
             f"[ITER {iteration}] edges={sum(result.edge_counts.values())} "

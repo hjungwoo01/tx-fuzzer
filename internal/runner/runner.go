@@ -265,8 +265,8 @@ func Run(ctx context.Context, env *Env) error {
 								lastElleMono = time.Since(env.Start).Nanoseconds()
 								lastElleWall = time.Now().UnixNano()
 							}
-							recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops)
-							recordTxnOp(env.Hist, history.Ok, process, lastElleMono, lastElleWall, okMops)
+							recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops, plan.Template.Name)
+							recordTxnOp(env.Hist, history.Ok, process, lastElleMono, lastElleWall, okMops, plan.Template.Name)
 						}
 						cancel()
 					}
@@ -284,8 +284,8 @@ func Run(ctx context.Context, env *Env) error {
 							lastElleMono = time.Since(env.Start).Nanoseconds()
 							lastElleWall = time.Now().UnixNano()
 						}
-						recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops)
-						recordTxnOp(env.Hist, history.Fail, process, lastElleMono, lastElleWall, okMops)
+						recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops, plan.Template.Name)
+						recordTxnOp(env.Hist, history.Fail, process, lastElleMono, lastElleWall, okMops, plan.Template.Name)
 					}
 					cancel()
 				}
@@ -336,11 +336,15 @@ func subRef(expr string, args []any) string {
 	return expr
 }
 
-func recordTxnOp(hw *history.Writer, opType history.OpType, process int, timeNS, wallNS int64, mops []history.Mop) {
+func recordTxnOp(hw *history.Writer, opType history.OpType, process int, timeNS, wallNS int64, mops []history.Mop, txnName string) {
 	if hw == nil || len(mops) == 0 {
 		return
 	}
-	if err := hw.WriteTxn(opType, process, timeNS, wallNS, mops); err != nil {
+	var meta map[string]string
+	if txnName != "" {
+		meta = map[string]string{"txn_name": txnName}
+	}
+	if err := hw.WriteTxn(opType, process, timeNS, wallNS, mops, meta); err != nil {
 		fmt.Printf("history txn write error: %v\n", err)
 	}
 }

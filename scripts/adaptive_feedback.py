@@ -20,6 +20,7 @@ Usage example:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -28,7 +29,7 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import networkx as nx
 import yaml
@@ -86,7 +87,10 @@ def build_dependency_graph(transactions: Sequence[Transaction]) -> GraphArtifact
 # ---------------------------------------------------------------------------
 
 
-def find_near_miss_cycles(graph: nx.DiGraph) -> List[Dict[str, Any]]:
+def find_near_miss_cycles(
+    graph: nx.DiGraph,
+    templates: Optional[Mapping[str, Optional[str]]] = None,
+) -> List[Dict[str, Any]]:
     """
     Detect length-2 paths (A -> B -> C) where the closing edge (C -> A) is absent.
 
@@ -113,6 +117,7 @@ def find_near_miss_cycles(graph: nx.DiGraph) -> List[Dict[str, Any]]:
             key_hints[triplet].extend(src_mid_keys or mid_dst_keys)
 
     ranked: List[Dict[str, Any]] = []
+    templates = templates or {}
     for (start, via, end), count in triplet_counter.most_common():
         keys = key_hints.get((start, via, end)) or []
         ranked.append(
@@ -122,6 +127,9 @@ def find_near_miss_cycles(graph: nx.DiGraph) -> List[Dict[str, Any]]:
                 "end": end,
                 "keys": list(dict.fromkeys(keys)),  # preserve order, dedupe
                 "count": count,
+                "start_template": templates.get(start),
+                "via_template": templates.get(via),
+                "end_template": templates.get(end),
             }
         )
     return ranked
@@ -285,6 +293,65 @@ def generate_mutations(
 
 
     return cfg
+
+
+def build_replay_config(
+    base_cfg: Dict[str, Any],
+    near_miss: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not near_miss:
+        return None
+
+    triplet = [
+        ("start", near_miss.get("start_template")),
+        ("via", near_miss.get("via_template")),
+        ("end", near_miss.get("end_template")),
+    ]
+    if any(template is None for _, template in triplet):
+        return None
+
+    workload = base_cfg.get("workload", {})
+    transactions = workload.get("transactions", [])
+    template_names = {
+        txn.get("name")
+        for txn in transactions
+        if isinstance(txn, dict)
+    }
+    for _, template in triplet:
+        if template not in template_names:
+            return None
+
+    replay_cfg = copy.deepcopy(base_cfg)
+    replay_cfg["replay"] = {
+        "enabled": True,
+        "transactions": [
+            {"alias": alias, "txn": template}
+            for alias, template in triplet
+        ],
+        "schedule": [
+            {"alias": "start", "action": "step", "steps": 0},
+            {"alias": "via", "action": "step", "steps": 0},
+            {"alias": "end", "action": "step", "steps": 0},
+            {"alias": "via", "action": "commit"},
+            {"alias": "end", "action": "commit"},
+            {"alias": "start", "action": "commit"},
+        ],
+    }
+
+    focus_keys = near_miss.get("keys") or []
+    if focus_keys:
+        replay_cfg["replay"]["focus_key"] = focus_keys[0]
+        dummy_changes: List[str] = []
+        for txn in replay_cfg.get("workload", {}).get("transactions", []):
+            for step in txn.get("steps", []):
+                args = step.get("args", [])
+                if isinstance(args, list):
+                    _mutate_args(args, [focus_keys[0]], dummy_changes)
+
+    scheduling = replay_cfg.setdefault("scheduling", {})
+    scheduling["clients"] = 1
+    scheduling.pop("barrier_every", None)
+    return replay_cfg
 
 
 # ---------------------------------------------------------------------------
@@ -565,10 +632,14 @@ def main() -> int:
 
         print(f"[INFO] Processing {iteration_label} using {history_path} and {workload_path}")
 
+        with workload_path.open("r", encoding="utf-8") as cfg_fh:
+            base_workload_cfg = yaml.safe_load(cfg_fh)
+
         transactions = parse_history(history_path)
         artifacts = build_dependency_graph(transactions)
 
-        near_misses = find_near_miss_cycles(artifacts.graph)
+        template_lookup = {txn.txn_id: txn.template for txn in transactions}
+        near_misses = find_near_miss_cycles(artifacts.graph, template_lookup)
         hot_keys = analyze_hot_keys(artifacts.graph, top_n=5)
         stats = summarize_edge_stats(artifacts)
         stats["transactions"] = len(transactions)
@@ -593,6 +664,13 @@ def main() -> int:
 
         analysis_json_path = iter_dir / "analysis.json"
         write_analysis_json(analysis_json_path, stats)
+
+        replay_cfg = build_replay_config(base_workload_cfg, near_misses[0] if near_misses else None)
+        if replay_cfg:
+            replay_path = iter_dir / "replay.yaml"
+            with replay_path.open("w", encoding="utf-8") as fh:
+                yaml.safe_dump(replay_cfg, fh, sort_keys=False, default_flow_style=False)
+            print(f"[INFO] Replay config saved to {replay_path}")
 
         changes: List[str] = []
         mutated_cfg = generate_mutations(near_misses, hot_keys, workload_path, changes)
