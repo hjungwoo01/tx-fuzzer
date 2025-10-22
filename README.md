@@ -123,14 +123,20 @@ replay:
       txn: hot_writer
   schedule:
     - alias: start
-      action: step   # run remaining steps for the "start" txn
-      steps: 0
+      action: step
+      steps: 2
     - alias: via
       action: step
-      steps: 0
+      steps: 1
+    - alias: via
+      action: step
+      steps: 2
     - alias: end
       action: step
-      steps: 0
+      steps: 2
+    - alias: start
+      action: step
+      steps: 0      # drain remaining steps
     - alias: via
       action: commit
     - alias: end
@@ -138,6 +144,10 @@ replay:
     - alias: start
       action: commit
   focus_key: 42
+  pause_after:
+    start: [2]
+    via: [1, 3]
+    end: [2]
 ```
 
 Run the replay directly with the existing runner:
@@ -146,7 +156,9 @@ Run the replay directly with the existing runner:
 go run ./cmd/runner --config runs/demo/iter_03/replay.yaml
 ```
 
-The runner honours the `schedule` list exactly: `step` events advance a transaction by the requested number of steps (zero means “drain the remainder”), while `commit`/`rollback` finalise the transaction. Optional `sleep` events insert delays, and additional aliases or actions can be edited in the generated YAML to experiment with custom interleavings. When `focus_key` is present the tooling has already narrowed choice lists so every replayed transaction targets that key.
+The runner honours the `schedule` list exactly: `step` events advance a transaction by the requested number of steps (zero means “drain the remainder”), while `commit`/`rollback` finalise the transaction. Optional `sleep` events insert delays, and additional aliases or actions can be edited in the generated YAML to experiment with custom interleavings. The `pause_after` map records the exact step counts chosen by the exporter so you can see where the replay pauses before hopping to another transaction. When `focus_key` is present the tooling has already narrowed choice lists so every replayed transaction targets that key.
+
+Pass `--run-replay` to `scripts/feedback_fuzzer.py` to execute the replay immediately after each iteration. The analyser re-checks whether the missing edge now appears in `replay_history.edn`; stubborn near cycles that still refuse to close are given extra weight when selecting keys for the next fuzzing round.
 
 Use the replay configs to deterministically drive a candidate interleaving before jumping back into the fuzzing loop.
 
