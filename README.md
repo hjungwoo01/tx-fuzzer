@@ -107,6 +107,51 @@ Use it when you want reproducible artefacts per iteration and a targeted push to
 
 ---
 
+### Deterministic Replay
+
+Every analysis pass now produces a deterministic replay config alongside the usual artefacts. `scripts/feedback_fuzzer.py` drops `iter_XX/replay.yaml`, and `scripts/adaptive_feedback.py` does the same for interactive runs. Each file augments the workload with a `replay` stanza:
+
+```yaml
+replay:
+  enabled: true
+  transactions:
+    - alias: start
+      txn: hot_writer
+    - alias: via
+      txn: read_skew_probe
+    - alias: end
+      txn: hot_writer
+  schedule:
+    - alias: start
+      action: step   # run remaining steps for the "start" txn
+      steps: 0
+    - alias: via
+      action: step
+      steps: 0
+    - alias: end
+      action: step
+      steps: 0
+    - alias: via
+      action: commit
+    - alias: end
+      action: commit
+    - alias: start
+      action: commit
+  focus_key: 42
+```
+
+Run the replay directly with the existing runner:
+
+```bash
+go run ./cmd/runner --config runs/demo/iter_03/replay.yaml
+```
+
+The runner honours the `schedule` list exactly: `step` events advance a transaction by the requested number of steps (zero means “drain the remainder”), while `commit`/`rollback` finalise the transaction. Optional `sleep` events insert delays, and additional aliases or actions can be edited in the generated YAML to experiment with custom interleavings. When `focus_key` is present the tooling has already narrowed choice lists so every replayed transaction targets that key.
+
+Use the replay configs to deterministically drive a candidate interleaving before jumping back into the fuzzing loop.
+
+---
+
 ### Feedback Heuristics
 
 `scripts/feedback_fuzzer.py` implements conservative heuristics:
