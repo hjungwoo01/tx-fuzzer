@@ -120,6 +120,10 @@ def find_near_miss_cycles(
     templates = templates or {}
     for (start, via, end), count in triplet_counter.most_common():
         keys = key_hints.get((start, via, end)) or []
+        rels_src_mid = graph[start][via].get("relationships", []) if graph.has_edge(start, via) else []
+        rels_mid_dst = graph[via][end].get("relationships", []) if graph.has_edge(via, end) else []
+        edge_sm = rels_src_mid[-1] if rels_src_mid else None
+        edge_md = rels_mid_dst[-1] if rels_mid_dst else None
         ranked.append(
             {
                 "start": start,
@@ -130,6 +134,10 @@ def find_near_miss_cycles(
                 "start_template": templates.get(start),
                 "via_template": templates.get(via),
                 "end_template": templates.get(end),
+                "start_step": edge_sm.source_step if edge_sm else None,
+                "via_step_from_start": edge_sm.target_step if edge_sm else None,
+                "via_step_to_end": edge_md.source_step if edge_md else None,
+                "end_step": edge_md.target_step if edge_md else None,
             }
         )
     return ranked
@@ -328,15 +336,61 @@ def build_replay_config(
             {"alias": alias, "txn": template}
             for alias, template in triplet
         ],
-        "schedule": [
-            {"alias": "start", "action": "step", "steps": 0},
-            {"alias": "via", "action": "step", "steps": 0},
-            {"alias": "end", "action": "step", "steps": 0},
+    }
+
+    start_step = near_miss.get("start_step")
+    via_steps = sorted(
+        {
+            step
+            for step in (
+                near_miss.get("via_step_from_start"),
+                near_miss.get("via_step_to_end"),
+            )
+            if step
+        }
+    )
+    end_step = near_miss.get("end_step")
+
+    schedule: List[Dict[str, Any]] = []
+    pause_after: Dict[str, List[int]] = {}
+
+    if start_step:
+        pause_after["start"] = [start_step]
+    if via_steps:
+        pause_after["via"] = via_steps
+    if end_step:
+        pause_after["end"] = [end_step]
+
+    executed: Dict[str, int] = {}
+
+    def add_step(alias: str, target: Optional[int]) -> None:
+        if target is None:
+            return
+        prev = executed.get(alias, 0)
+        if target <= prev:
+            return
+        schedule.append({"alias": alias, "action": "step", "steps": target - prev})
+        executed[alias] = target
+
+    add_step("start", start_step)
+    for step in via_steps:
+        add_step("via", step)
+    add_step("end", end_step)
+
+    for alias in ("start", "via", "end"):
+        schedule.append({"alias": alias, "action": "step", "steps": 0})
+
+    schedule.extend(
+        [
             {"alias": "via", "action": "commit"},
             {"alias": "end", "action": "commit"},
             {"alias": "start", "action": "commit"},
-        ],
-    }
+        ]
+    )
+
+    replay_cfg["replay"]["schedule"] = schedule
+    if pause_after:
+        replay_cfg["replay"]["pause_after"] = pause_after
 
     focus_keys = near_miss.get("keys") or []
     if focus_keys:

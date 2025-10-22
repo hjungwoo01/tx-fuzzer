@@ -83,6 +83,8 @@ class EdgeDetail:
     key: Any
     write_value: Any = None
     read_value: Any = None
+    source_step: Optional[int] = None
+    target_step: Optional[int] = None
 
     def label(self) -> str:
         value_bits = []
@@ -107,6 +109,11 @@ class NearCycle:
     start_template: Optional[str] = None
     via_template: Optional[str] = None
     end_template: Optional[str] = None
+    start_step: Optional[int] = None
+    via_step_from_start: Optional[int] = None
+    via_step_to_end: Optional[int] = None
+    end_step: Optional[int] = None
+    replay_attempts: int = 0
 
     def describe(self) -> str:
         key_part = f"key {self.key}" if self.key is not None else "shared keys"
@@ -120,7 +127,21 @@ class NearCycle:
         if self.end_template:
             tmpl_bits.append(f"{self.end}:{self.end_template}")
         tmpl_part = " | ".join(tmpl_bits)
-        detail = f" (templates {tmpl_part})" if tmpl_part else ""
+        detail_bits = []
+        if tmpl_part:
+            detail_bits.append(f"templates {tmpl_part}")
+        step_bits = []
+        if self.start_step:
+            step_bits.append(f"start@{self.start_step}")
+        if self.via_step_from_start:
+            step_bits.append(f"via@{self.via_step_from_start}")
+        if self.via_step_to_end and self.via_step_to_end != self.via_step_from_start:
+            step_bits.append(f"via#2@{self.via_step_to_end}")
+        if self.end_step:
+            step_bits.append(f"end@{self.end_step}")
+        if step_bits:
+            detail_bits.append("steps " + ", ".join(step_bits))
+        detail = f" ({'; '.join(detail_bits)})" if detail_bits else ""
         return (
             f"{self.start}->{self.via}->{self.end} via {key_part} "
             f"(edges {start_types} then {via_types}){detail}"
@@ -338,7 +359,8 @@ def build_dependency_graph(
         edge_data["label"] = ",".join(sorted(type_set))
 
     for txn in transactions:
-        for op in txn.ops:
+        for op_index, op in enumerate(txn.ops):
+            step_index = op_index + 1
             if op.op_type == "r":
                 matching_writer: Optional[Dict[str, Any]] = None
                 if op.value is not None:
@@ -354,14 +376,16 @@ def build_dependency_graph(
                         key=op.key,
                         write_value=matching_writer["value"],
                         read_value=op.value,
+                        source_step=matching_writer.get("step_index"),
+                        target_step=step_index,
                     )
                     record_edge(detail)
                 last_readers[op.key][txn.txn_id] = {
                     "read_value": op.value,
-                    "reader_index": txn.index,
+                    "txn_index": txn.index,
+                    "step_index": step_index,
                 }
             elif op.op_type == "w":
-                # ww dependency
                 prior_writes = writes_by_key.get(op.key, [])
                 if prior_writes:
                     last_writer = prior_writes[-1]
@@ -372,10 +396,11 @@ def build_dependency_graph(
                             dep_type="ww",
                             key=op.key,
                             write_value=op.value,
+                            source_step=last_writer.get("step_index"),
+                            target_step=step_index,
                         )
                         record_edge(detail)
 
-                # rw anti-dependencies
                 readers = last_readers.get(op.key, {})
                 for reader_txn_id, info in readers.items():
                     if reader_txn_id == txn.txn_id:
@@ -387,6 +412,8 @@ def build_dependency_graph(
                         key=op.key,
                         read_value=info.get("read_value"),
                         write_value=op.value,
+                        source_step=info.get("step_index"),
+                        target_step=step_index,
                     )
                     record_edge(detail)
                 last_readers[op.key] = {}
@@ -396,6 +423,7 @@ def build_dependency_graph(
                         "txn_id": txn.txn_id,
                         "value": op.value,
                         "txn_index": txn.index,
+                        "step_index": step_index,
                     }
                 )
     return graph, edges
@@ -431,10 +459,12 @@ def derive_feedback(
             rels_src_mid = graph[src][mid].get("relationships", [])
             rels_mid_dst = graph[mid][dst].get("relationships", [])
             key_hint = None
-            if rels_src_mid:
-                key_hint = rels_src_mid[-1].key
-            if key_hint is None and rels_mid_dst:
-                key_hint = rels_mid_dst[-1].key
+            edge_sm = rels_src_mid[-1] if rels_src_mid else None
+            edge_md = rels_mid_dst[-1] if rels_mid_dst else None
+            if edge_sm and edge_sm.key is not None:
+                key_hint = edge_sm.key
+            if key_hint is None and edge_md and edge_md.key is not None:
+                key_hint = edge_md.key
 
             start_edge_types = tuple(sorted(graph[src][mid].get("types", set())))
             via_edge_types = tuple(sorted(graph[mid][dst].get("types", set())))
@@ -452,6 +482,10 @@ def derive_feedback(
                     start_template=start_txn.template if start_txn else None,
                     via_template=via_txn.template if via_txn else None,
                     end_template=end_txn.template if end_txn else None,
+                    start_step=edge_sm.source_step if edge_sm else None,
+                    via_step_from_start=edge_sm.target_step if edge_sm else None,
+                    via_step_to_end=edge_md.source_step if edge_md else None,
+                    end_step=edge_md.target_step if edge_md else None,
                 )
             )
 

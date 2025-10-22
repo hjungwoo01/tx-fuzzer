@@ -35,7 +35,7 @@ import yaml
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -43,11 +43,13 @@ try:
     # When executed from repository root we can import through the scripts package.
     from scripts.analyze_history import (
         AnalysisResult,
+        NearCycle,
         analyze_history_file,
     )
 except ImportError:  # pragma: no cover - fallback for direct invocation
     from analyze_history import (  # type: ignore
         AnalysisResult,
+        NearCycle,
         analyze_history_file,
     )
 
@@ -61,6 +63,7 @@ class IterationContext:
     base_keys: List[Any]
     last_target_keys: List[Any]
     iteration_index: int = 0
+    replay_failures: Dict[Tuple[str, str, str], int] = field(default_factory=dict)
 
 
 def parse_args() -> argparse.Namespace:
@@ -116,6 +119,11 @@ def parse_args() -> argparse.Namespace:
         "--keep-schema-init",
         action="store_true",
         help="Keep init_schema=true for every iteration (default resets to false after first).",
+    )
+    parser.add_argument(
+        "--run-replay",
+        action="store_true",
+        help="Execute generated replay schedules and fold the outcome back into key selection.",
     )
     parser.add_argument(
         "--verbose",
@@ -241,6 +249,74 @@ def run_tx_runner(
     subprocess.run(cmd, check=True, env=env)
 
 
+def evaluate_replay(
+    runner_cmd: RunnerCommand,
+    replay_config: Path,
+    iter_dir: Path,
+    near_cycle: NearCycle,
+    ctx: IterationContext,
+    max_near_paths: int,
+) -> Optional[bool]:
+    history_path = iter_dir / "replay_history.edn"
+    try:
+        run_tx_runner(runner_cmd, replay_config, history_path)
+    except subprocess.CalledProcessError as exc:
+        print(f"[WARN] Replay runner failed: {exc}")
+        summary = {
+            "status": "error",
+            "error": str(exc),
+        }
+        (iter_dir / "replay_result.json").write_text(
+            json.dumps(summary, indent=2),
+            encoding="utf-8",
+        )
+        cycle_key = (near_cycle.start, near_cycle.via, near_cycle.end)
+        ctx.replay_failures[cycle_key] = ctx.replay_failures.get(cycle_key, 0) + 1
+        return None
+
+    replay_result = analyze_history_file(
+        history_path,
+        max_near_paths=max(max_near_paths, 1),
+    )
+    edge_present = replay_result.graph.has_edge(near_cycle.end, near_cycle.start)
+    edge_matches_key = False
+    if edge_present:
+        rels = replay_result.graph[near_cycle.end][near_cycle.start].get("relationships", [])
+        if near_cycle.key is None:
+            edge_matches_key = True
+        else:
+            edge_matches_key = any(rel.key == near_cycle.key for rel in rels)
+
+    success = edge_present and edge_matches_key
+    summary = {
+        "status": "ok",
+        "edge_added": success,
+        "edge_present": edge_present,
+        "edge_matches_key": edge_matches_key,
+        "target": {
+            "start": near_cycle.start,
+            "via": near_cycle.via,
+            "end": near_cycle.end,
+            "key": near_cycle.key,
+        },
+    }
+    replay_result_path = iter_dir / "replay_result.json"
+    replay_result_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    replay_analysis_path = iter_dir / "replay_analysis.json"
+    replay_analysis_path.write_text(
+        json.dumps(serialize_analysis(replay_result), indent=2),
+        encoding="utf-8",
+    )
+
+    cycle_key = (near_cycle.start, near_cycle.via, near_cycle.end)
+    if success:
+        ctx.replay_failures.pop(cycle_key, None)
+    else:
+        ctx.replay_failures[cycle_key] = ctx.replay_failures.get(cycle_key, 0) + 1
+    return success
+
+
 def select_target_keys(
     result: AnalysisResult,
     ctx: IterationContext,
@@ -250,7 +326,12 @@ def select_target_keys(
     for near in result.feedback.near_cycles:
         if near.key is None:
             continue
-        counter[near.key] += 3
+        weight = 3
+        cycle_key = (near.start, near.via, near.end)
+        failures = ctx.replay_failures.get(cycle_key, 0)
+        if failures:
+            weight += 3 * failures
+        counter[near.key] += weight
     for key, count in result.feedback.key_pressure.items():
         counter[key] += count
     if not counter and ctx.last_target_keys:
@@ -385,14 +466,6 @@ def build_replay_config(
         "transactions": [
             {"alias": alias, "txn": template} for alias, template in triplet
         ],
-        "schedule": [
-            {"alias": "start", "action": "step", "steps": 0},
-            {"alias": "via", "action": "step", "steps": 0},
-            {"alias": "end", "action": "step", "steps": 0},
-            {"alias": "via", "action": "commit"},
-            {"alias": "end", "action": "commit"},
-            {"alias": "start", "action": "commit"},
-        ],
     }
 
     if near.key is not None:
@@ -401,6 +474,64 @@ def build_replay_config(
             replay_cfg.get("workload", {}).get("transactions", []),
             [near.key],
         )
+
+    step_info_available = any(
+        value
+        for value in (
+            near.start_step,
+            near.via_step_from_start,
+            near.via_step_to_end,
+            near.end_step,
+        )
+    )
+
+    schedule: List[Dict[str, Any]] = []
+    pause_after: Dict[str, List[int]] = {}
+
+    if step_info_available:
+        executed: Dict[str, int] = {}
+
+        def add_step(alias: str, target: Optional[int]) -> None:
+            if target is None:
+                return
+            prev = executed.get(alias, 0)
+            if target <= prev:
+                return
+            schedule.append({"alias": alias, "action": "step", "steps": target - prev})
+            executed[alias] = target
+
+        if near.start_step:
+            pause_after["start"] = [near.start_step]
+        via_steps = sorted(
+            {step for step in (near.via_step_from_start, near.via_step_to_end) if step}
+        )
+        if via_steps:
+            pause_after["via"] = via_steps
+        if near.end_step:
+            pause_after["end"] = [near.end_step]
+
+        add_step("start", near.start_step)
+        for step in via_steps:
+            add_step("via", step)
+        add_step("end", near.end_step)
+    else:
+        # Fall back to draining transactions sequentially before commit.
+        pause_after = {}
+
+    for alias in ("start", "via", "end"):
+        schedule.append({"alias": alias, "action": "step", "steps": 0})
+
+    schedule.extend(
+        [
+            {"alias": "via", "action": "commit"},
+            {"alias": "end", "action": "commit"},
+            {"alias": "start", "action": "commit"},
+        ]
+    )
+
+    replay_cfg["replay"]["schedule"] = schedule
+    if pause_after:
+        replay_cfg["replay"]["pause_after"] = pause_after
 
     scheduling = replay_cfg.setdefault("scheduling", {})
     scheduling["clients"] = 1
@@ -430,6 +561,11 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "start_template": nc.start_template,
                 "via_template": nc.via_template,
                 "end_template": nc.end_template,
+                "start_step": nc.start_step,
+                "via_step_from_start": nc.via_step_from_start,
+                "via_step_to_end": nc.via_step_to_end,
+                "end_step": nc.end_step,
+                "replay_attempts": nc.replay_attempts,
             }
             for nc in result.feedback.near_cycles
         ],
@@ -442,6 +578,9 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "source_template": nc.end_template,
                 "target_template": nc.start_template,
                 "via_template": nc.via_template,
+                "start_step": nc.start_step,
+                "via_step": nc.via_step_to_end,
+                "target_step": nc.end_step,
             }
             for nc in result.feedback.near_cycles
         ],
@@ -582,7 +721,16 @@ def orchestrate(args: argparse.Namespace) -> None:
             history_path,
             max_near_paths=max(args.max_near_cycles, 1),
         )
-        save_analysis_json(result, analysis_path)
+
+        current_cycle_keys = {
+            (nc.start, nc.via, nc.end) for nc in result.feedback.near_cycles
+        }
+        context.replay_failures = {
+            key: value
+            for key, value in context.replay_failures.items()
+            if key in current_cycle_keys
+        }
+
         minimal_graph_path = iter_dir / "minimal_dependency_graph.png"
         missing_edge = draw_minimal_graph(result, minimal_graph_path)
         if missing_edge:
@@ -591,12 +739,32 @@ def orchestrate(args: argparse.Namespace) -> None:
             )
 
         replay_cfg = build_replay_config(iter_cfg, result)
+        replay_outcome: Optional[bool] = None
         if replay_cfg:
             replay_cfg_path = iter_dir / "replay.yaml"
             save_yaml(replay_cfg, replay_cfg_path)
             print(
                 f"[ITER {iteration}] Deterministic replay config → {replay_cfg_path}"
             )
+            if args.run_replay and result.feedback.near_cycles:
+                replay_outcome = evaluate_replay(
+                    runner_cmd,
+                    replay_cfg_path,
+                    iter_dir,
+                    result.feedback.near_cycles[0],
+                    context,
+                    args.max_near_cycles,
+                )
+                if replay_outcome is True:
+                    print(
+                        f"[ITER {iteration}] Replay closed edge {result.feedback.near_cycles[0].end}→{result.feedback.near_cycles[0].start}"
+                    )
+                elif replay_outcome is False:
+                    print(
+                        f"[ITER {iteration}] Replay did not close edge {result.feedback.near_cycles[0].end}→{result.feedback.near_cycles[0].start}; boosting priority"
+                    )
+                else:
+                    print(f"[ITER {iteration}] Replay execution failed; will retry later")
         print(
             f"[ITER {iteration}] edges={sum(result.edge_counts.values())} "
             f"edges/txn={result.edges_per_txn:.3f} cycles={len(result.cycles)} "
@@ -606,6 +774,12 @@ def orchestrate(args: argparse.Namespace) -> None:
             print(f"[ITER {iteration}] suggestions:")
             for suggestion in result.feedback.suggestions:
                 print(f"    {suggestion}")
+
+        for nc in result.feedback.near_cycles:
+            cycle_key = (nc.start, nc.via, nc.end)
+            nc.replay_attempts = context.replay_failures.get(cycle_key, 0)
+
+        save_analysis_json(result, analysis_path)
 
         current_cfg = build_next_config(iter_cfg, result, context)
         next_mix = current_cfg.get("workload", {}).get("mix", [])
