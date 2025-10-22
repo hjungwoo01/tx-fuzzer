@@ -242,7 +242,7 @@ func writeEDNValue(sb *strings.Builder, v any) {
 	}
 }
 
-func (hw *Writer) WriteTxn(opType OpType, process int, timeNS, wallNS int64, mops []Mop) error {
+func (hw *Writer) WriteTxn(opType OpType, process int, timeNS, wallNS int64, mops []Mop, meta map[string]string) error {
 	var sb strings.Builder
 	sb.WriteString("{:type ")
 	sb.WriteString(string(opType))
@@ -255,7 +255,25 @@ func (hw *Writer) WriteTxn(opType OpType, process int, timeNS, wallNS int64, mop
 		}
 		writeMop(&sb, m)
 	}
-	sb.WriteString("]}\n")
+	sb.WriteString("]")
+	if len(meta) > 0 {
+		metaKeys := make([]string, 0, len(meta))
+		for k := range meta {
+			metaKeys = append(metaKeys, k)
+		}
+		sort.Strings(metaKeys)
+		sb.WriteString(" :meta {")
+		for i, k := range metaKeys {
+			if i > 0 {
+				sb.WriteByte(' ')
+			}
+			sb.WriteString(":" + k)
+			sb.WriteByte(' ')
+			writeEDNValue(&sb, meta[k])
+		}
+		sb.WriteByte('}')
+	}
+	sb.WriteString("}\n")
 	line := sb.String()
 
 	hw.mu.Lock()
