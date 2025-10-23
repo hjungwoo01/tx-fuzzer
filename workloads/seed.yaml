@@ -18,6 +18,9 @@ workload:
       isolation: "SERIALIZABLE"
       timeout: "5s"
       steps:
+        # Drop any existing kv table so schema matches expected types
+        - sql: "DROP TABLE IF EXISTS kv"
+
         # Create kv table if not exists
         - sql: |
             CREATE TABLE IF NOT EXISTS kv (
