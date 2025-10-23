@@ -1,0 +1,98 @@
+database:
+  kind: postgres
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+init_schema: false
+workload:
+  datatype: register
+  transactions:
+  - name: transfer
+    isolation: REPEATABLE READ
+    timeout: 2s
+    steps:
+    - sql: BEGIN;
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - choice:
+          from:
+          - k1
+          - k3
+          - k2
+          - k4
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = $2 AND $1::text IS NOT NULL
+      args:
+      - $1
+      - choice:
+          from:
+          - k1
+          - k3
+          - k2
+          - k4
+      elle:
+        f: :read
+        key: $2
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = v - 1 WHERE k = $1 AND $2::text IS NOT NULL
+      args:
+      - $1
+      - $2
+      elle:
+        f: :write
+        key: $1
+    - sql: UPDATE kv SET v = v + 1 WHERE k = $1
+      args:
+      - $2
+      elle:
+        f: :write
+        key: $1
+    - sql: COMMIT;
+  - name: update
+    isolation: READ COMMITTED
+    timeout: 2s
+    steps:
+    - sql: BEGIN;
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - choice:
+          from:
+          - k1
+          - k3
+          - k2
+          - k4
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = v + 1 WHERE k = $1
+      args:
+      - $1
+      elle:
+        f: :write
+        key: $1
+    - sql: COMMIT;
+  - name: read-pair
+    isolation: READ COMMITTED
+    timeout: 1s
+    steps:
+    - sql: SELECT v FROM kv WHERE k IN ('k1','k2','k3','k4')
+      elle:
+        f: :read
+        key: all
+        value_from_result_col: 0
+  mix:
+  - txn: transfer
+    weight: 0.5461
+  - txn: update
+    weight: 0.3276
+  - txn: read-pair
+    weight: 0.1264
+scheduling:
+  duration: 10s
+  clients: 16
+  barrier_every: 2
+  random_kill_pct: 0
+  jitter_ms_min: 1
+  jitter_ms_max: 5
