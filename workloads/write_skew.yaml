@@ -15,19 +15,24 @@ workload:
         # Choose two *distinct* keys for cross-dependency
         - sql: "BEGIN;"
         - sql: "SELECT v FROM kv WHERE k = $1"
-          args: [{choice: {from: [0,1,2,3]}}]
+          args: [{choice: {from: ["k1","k2","k3","k4"]}}]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
-        - sql: "SELECT v FROM kv WHERE k = $2"
-          args: [{choice: {from: [0,1,2,3]}}]
+        - sql: "SELECT v FROM kv WHERE k = $2 AND $1::text IS NOT NULL"
+          args:
+            - "$1"
+            - {choice: {from: ["k1","k2","k3","k4"]}}
           elle: {f: ":read", key: "$2", value_from_result_col: 0}
 
         # decrement one key, increment another
-        - sql: "UPDATE kv SET v = v - 1 WHERE k = $1"
-          args: ["$1"]
+        - sql: "UPDATE kv SET v = v - 1 WHERE k = $1 AND $2::text IS NOT NULL"
+          args:
+            - "$1"
+            - "$2"
           elle: {f: ":write", key: "$1"}
-        - sql: "UPDATE kv SET v = v + 1 WHERE k = $2"
-          args: ["$2"]
-          elle: {f: ":write", key: "$2"}
+        - sql: "UPDATE kv SET v = v + 1 WHERE k = $1"
+          args:
+            - "$2"
+          elle: {f: ":write", key: "$1"}
         - sql: "COMMIT;"
 
     # Transaction 2: simple single-key update
@@ -37,7 +42,7 @@ workload:
       steps:
         - sql: "BEGIN;"
         - sql: "SELECT v FROM kv WHERE k = $1"
-          args: [{choice: {from: [0,1,2,3]}}]
+          args: [{choice: {from: ["k1","k2","k3","k4"]}}]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
         - sql: "UPDATE kv SET v = v + 1 WHERE k = $1"
           args: ["$1"]
@@ -49,7 +54,7 @@ workload:
       isolation: "READ COMMITTED"
       timeout: "1s"
       steps:
-        - sql: "SELECT v FROM kv WHERE k IN (0,1,2,3)"
+        - sql: "SELECT v FROM kv WHERE k IN ('k1','k2','k3','k4')"
           elle: {f: ":read", key: "all", value_from_result_col: 0}
 
   mix:
