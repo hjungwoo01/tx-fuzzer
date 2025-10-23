@@ -35,7 +35,7 @@ import yaml
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -775,9 +775,10 @@ def orchestrate(args: argparse.Namespace) -> None:
             for suggestion in result.feedback.suggestions:
                 print(f"    {suggestion}")
 
-        for nc in result.feedback.near_cycles:
+        for idx, nc in enumerate(result.feedback.near_cycles):
             cycle_key = (nc.start, nc.via, nc.end)
-            nc.replay_attempts = context.replay_failures.get(cycle_key, 0)
+            attempts = context.replay_failures.get(cycle_key, 0)
+            result.feedback.near_cycles[idx] = replace(nc, replay_attempts=attempts)
 
         save_analysis_json(result, analysis_path)
 
