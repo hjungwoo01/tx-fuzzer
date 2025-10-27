@@ -24,6 +24,14 @@ type ElleMap struct {
 }
 
 type Step struct {
+	SQL     string        `yaml:"sql,omitempty"`
+	Args    []any         `yaml:"args,omitempty"` // literals or ArgGen instructions
+	Elle    *ElleMap      `yaml:"elle,omitempty"`
+	Sleep   time.Duration `yaml:"sleep,omitempty"`
+	Queries []Query       `yaml:"queries,omitempty"`
+}
+
+type Query struct {
 	SQL   string        `yaml:"sql"`
 	Args  []any         `yaml:"args,omitempty"` // literals or ArgGen instructions
 	Elle  *ElleMap      `yaml:"elle,omitempty"`
@@ -31,10 +39,14 @@ type Step struct {
 }
 
 type TxnTemplate struct {
-	Name      string        `yaml:"name"`
-	Isolation string        `yaml:"isolation,omitempty"` // e.g., "SERIALIZABLE"
-	Steps     []Step        `yaml:"steps"`
-	Timeout   time.Duration `yaml:"timeout,omitempty"`
+	Name              string        `yaml:"name"`
+	Isolation         string        `yaml:"isolation,omitempty"` // e.g., "SERIALIZABLE"
+	Steps             []Step        `yaml:"steps,omitempty"`
+	Queries           []Query       `yaml:"queries,omitempty"`
+	Timeout           time.Duration `yaml:"timeout,omitempty"`
+	RollbackOnError   *bool         `yaml:"rollback_on_error,omitempty"`
+	InterQueryDelayMS int           `yaml:"inter_query_delay_ms,omitempty"`
+	CommitStrategy    string        `yaml:"commit_strategy,omitempty"`
 }
 
 type MixItem struct {

@@ -114,4 +114,10 @@ func TestRunWritesHistory(t *testing.T) {
 	if !strings.Contains(content, ":f :txn") {
 		t.Fatalf("history missing txn entry:\n%s", content)
 	}
+	if !strings.Contains(content, ":f :query") {
+		t.Fatalf("history missing per-query entries:\n%s", content)
+	}
+	if !strings.Contains(content, ":f :commit") {
+		t.Fatalf("history missing commit boundary entry:\n%s", content)
+	}
 }

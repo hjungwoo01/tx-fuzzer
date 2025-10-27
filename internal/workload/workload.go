@@ -175,23 +175,36 @@ func MaterializeArgs(specs []GenSpec, prev []any) []any {
 }
 
 type TxnPlan struct {
-	Template    *config.TxnTemplate
-	ArgsPerStep [][]GenSpec
+	Template *config.TxnTemplate
+	Queries  []QueryPlan
+}
+
+type QueryPlan struct {
+	Template config.Query
+	ArgsSpec []GenSpec
 }
 
 func BuildPlans(wl config.Workload) map[string]TxnPlan {
 	m := map[string]TxnPlan{}
 	for i := range wl.Transactions {
 		t := &wl.Transactions[i]
-		steps := make([][]GenSpec, len(t.Steps))
-		for si, st := range t.Steps {
-			ss := make([]GenSpec, len(st.Args))
-			for ai, a := range st.Args {
-				ss[ai] = ParseArg(a)
+		queryTemplates := flattenTxnQueries(t)
+		plans := make([]QueryPlan, len(queryTemplates))
+		for qi := range queryTemplates {
+			q := queryTemplates[qi]
+			specs := make([]GenSpec, len(q.Args))
+			for ai, a := range q.Args {
+				specs[ai] = ParseArg(a)
 			}
-			steps[si] = ss
+			plans[qi] = QueryPlan{
+				Template: q,
+				ArgsSpec: specs,
+			}
 		}
-		m[t.Name] = TxnPlan{Template: t, ArgsPerStep: steps}
+		m[t.Name] = TxnPlan{
+			Template: t,
+			Queries:  plans,
+		}
 	}
 	return m
 }
@@ -231,4 +244,41 @@ func ContextWithTimeout(ctx context.Context, d time.Duration) (context.Context, 
 		return context.WithCancel(ctx)
 	}
 	return context.WithTimeout(ctx, d)
+}
+
+func flattenTxnQueries(t *config.TxnTemplate) []config.Query {
+	count := len(t.Queries)
+	for _, st := range t.Steps {
+		if len(st.Queries) > 0 {
+			count += len(st.Queries)
+		} else if st.SQL != "" {
+			count++
+		}
+	}
+	out := make([]config.Query, 0, count)
+	for _, q := range t.Queries {
+		out = append(out, q)
+	}
+	for _, st := range t.Steps {
+		if len(st.Queries) > 0 {
+			for idx, q := range st.Queries {
+				queryCopy := q
+				if idx == len(st.Queries)-1 && st.Sleep > 0 {
+					queryCopy.Sleep += st.Sleep
+				}
+				out = append(out, queryCopy)
+			}
+			continue
+		}
+		if st.SQL == "" {
+			continue
+		}
+		out = append(out, config.Query{
+			SQL:   st.SQL,
+			Args:  st.Args,
+			Elle:  st.Elle,
+			Sleep: st.Sleep,
+		})
+	}
+	return out
 }
