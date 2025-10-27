@@ -66,6 +66,39 @@ Use `--skip-run` together with a custom `--runner-cmd` (e.g., a copier script) w
 
 ---
 
+### Workload Transactions
+
+Transaction templates can now specify ordered query lists executed on a shared session:
+
+```yaml
+workload:
+  transactions:
+    - name: transfer
+      isolation: "SERIALIZABLE"
+      timeout: "2s"
+      rollback_on_error: true          # default; stop immediately on the first query error
+      inter_query_delay_ms: 10         # optional pacing between sequential queries
+      commit_strategy: random          # commit | rollback | random (defaults to commit)
+      queries:
+        - sql: "UPDATE accounts SET balance = balance - $1 WHERE id = $2"
+          args: [100, "$1"]
+          elle: {f: ":write", key: "$2"}
+        - sql: "UPDATE accounts SET balance = balance + $1 WHERE id = $3"
+          args: [100, "$2"]
+          elle: {f: ":write", key: "$3"}
+        - sql: "SELECT balance FROM accounts WHERE id = $2"
+          args: ["$2"]
+          elle: {f: ":read", key: "$2", value_from_result_col: 0}
+```
+
+- Every query runs sequentially within the same `BEGIN`/`COMMIT` block, and per-query `:invoke`/`:ok`/`:fail` events share a common `txn_id`.
+- Terminal `:commit`/`:rollback` events are recorded according to `commit_strategy`, making intentional aborts visible in histories.
+- Legacy `steps` arrays remain supported; the runner treats each step as a single-query transaction and can mix both styles in one workload.
+
+Optional pacing and error-handling controls (`inter_query_delay_ms`, `rollback_on_error`) help model real client behaviour and surface edge cases (e.g., continuing after a recoverable error before rolling back).
+
+---
+
 ### Inspecting Histories Manually
 
 You can invoke the analyzer directly on any Elle history:
