@@ -8,9 +8,26 @@ workload:
     - name: sanity
       isolation: "READ COMMITTED"
       timeout: "2s"
-      steps:
+      rollback_on_error: true
+      inter_query_delay_ms: 5
+      queries:
         - sql: "UPDATE kv SET v = v + 1 WHERE k=$1"
           args: [{choice: {from: [0,1,2,3,4,5,6,7,8,9]}}]
+          elle: {f: ":write", key: "$1"}
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: ["$1"]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+    - name: sanity-rollback
+      isolation: "READ COMMITTED"
+      timeout: "2s"
+      rollback_on_error: false
+      commit_strategy: rollback
+      inter_query_delay_ms: 0
+      queries:
+        - sql: "INSERT INTO kv(k, v) VALUES($1, $2) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v"
+          args:
+            - rand_int: {min: 10, max: 19}
+            - rand_int: {min: 0, max: 100}
           elle: {f: ":write", key: "$1"}
         - sql: "SELECT v FROM kv WHERE k=$1"
           args: ["$1"]
@@ -18,6 +35,8 @@ workload:
 
   mix:
     - txn: sanity
+      weight: 1
+    - txn: sanity-rollback
       weight: 1
 
 scheduling:
