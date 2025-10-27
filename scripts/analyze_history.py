@@ -268,6 +268,13 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
     for idx, event in enumerate(events):
         event_type = str(event.get("type", "")).lower()
         process = event.get("process")
+        event_f = event.get("f")
+        if event_f is not None:
+            f_str = str(event_f)
+            if f_str.startswith(":"):
+                f_str = f_str[1:]
+            if f_str != "txn":
+                continue
         if event_type == "invoke":
             inflight[process] = dict(event)
             inflight[process]["history_index"] = idx
@@ -276,11 +283,19 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
         if event_type in {"ok", "fail"}:
             start = inflight.pop(process, {})
             status = event_type
-            txn_id = (
+            meta: Dict[str, Any] = {}
+            for source in (start.get("meta"), event.get("meta")):
+                if isinstance(source, Mapping):
+                    meta.update(source)
+            raw_txn_id = (
                 event.get("txn")
                 or start.get("txn")
-                or f"txn_{txn_counter + 1}"
+                or meta.get("txn_id")
             )
+            if raw_txn_id is None:
+                txn_id = f"txn_{txn_counter + 1}"
+            else:
+                txn_id = str(raw_txn_id)
             txn_counter += 1
             raw_ops = event.get("value") or start.get("value") or []
             ops: List[Operation] = []
@@ -295,21 +310,12 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
                             value=normalized.value,
                         )
                     )
+            template_name = None
+            if meta:
+                raw_name = meta.get("txn_name") or meta.get("name")
+                if isinstance(raw_name, str):
+                    template_name = raw_name
             if status == "ok":
-                meta = {}
-                start_meta = start.get("meta") if isinstance(start, Mapping) else None
-                if isinstance(start_meta, Mapping):
-                    meta.update(start_meta)
-                event_meta = event.get("meta") if isinstance(event, Mapping) else None
-                if isinstance(event_meta, Mapping):
-                    meta.update(event_meta)
-
-                template_name = None
-                if meta:
-                    raw_name = meta.get("txn_name") or meta.get("name")
-                    if isinstance(raw_name, str):
-                        template_name = raw_name
-
                 transactions.append(
                     Transaction(
                         txn_id=str(txn_id),
