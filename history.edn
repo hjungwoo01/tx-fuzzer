@@ -1,0 +1,6 @@
+{:type :invoke :f :txn :process 1 :time 15703278 :wall 1761225307057190246 :value [[:r "k3" nil] [:w "k3" "k3"]] :meta {:txn_name "update"}}
+{:type :ok :f :txn :process 1 :time 26500696 :wall 1761225307067987749 :value [[:r "k3" 2766] [:w "k3" "k3"]] :meta {:txn_name "update"}}
+{:type :invoke :f :txn :process 2 :time 23956712 :wall 1761225307065443956 :value [[:r "k3" nil] [:w "k3" "k3"]] :meta {:txn_name "update"}}
+{:type :ok :f :txn :process 2 :time 27368523 :wall 1761225307068855826 :value [[:r "k3" 2766] [:w "k3" "k3"]] :meta {:txn_name "update"}}
+{:type :invoke :f :txn :process 0 :time 7705801 :wall 1761225307049192764 :value [[:r "k3" nil] [:r "k3" nil] [:w "k3" "k3"] [:w "k3" "k3"]] :meta {:txn_name "transfer"}}
+{:type :ok :f :txn :process 0 :time 25307549 :wall 1761225307066794737 :value [[:r "k3" 2766] [:r "k3" 2766] [:w "k3" "k3"] [:w "k3" "k3"]] :meta {:txn_name "transfer"}}

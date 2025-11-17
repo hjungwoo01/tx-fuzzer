@@ -1,0 +1,48 @@
+database:
+  kind: postgres
+  dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+
+scheduling:
+  clients: 1
+  duration: "1s"
+  barrier_every: 0
+  random_kill_pct: 0
+
+workload:
+  mix:
+    - txn: seed
+      weight: 1
+
+  transactions:
+    - name: seed
+      isolation: "SERIALIZABLE"
+      timeout: "5s"
+      steps:
+        # Drop any existing kv table so schema matches expected types
+        - sql: "DROP TABLE IF EXISTS kv"
+
+        # Create kv table if not exists
+        - sql: |
+            CREATE TABLE IF NOT EXISTS kv (
+              k TEXT PRIMARY KEY,
+              v INT,
+              ts BIGINT DEFAULT 0
+            );
+
+        # Insert 4 initial keys
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k1"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k2"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k3"
+            - 0
+        - sql: "INSERT INTO kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING"
+          args:
+            - "k4"
+            - 0

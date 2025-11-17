@@ -1,0 +1,130 @@
+database:
+  kind: postgres
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+init_schema: false
+workload:
+  datatype: register
+  transactions:
+  - name: transfer
+    isolation: REPEATABLE READ
+    timeout: 2s
+    steps:
+    - sql: BEGIN;
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - choice:
+          from:
+          - k2
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = $2 AND $1::text IS NOT NULL
+      args:
+      - k2
+      - choice:
+          from:
+          - k2
+      elle:
+        f: :read
+        key: $2
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = v - 1 WHERE k = $1 AND $2::text IS NOT NULL
+      args:
+      - k2
+      - k2
+      elle:
+        f: :write
+        key: $1
+    - sql: UPDATE kv SET v = v + 1 WHERE k = $1
+      args:
+      - k2
+      elle:
+        f: :write
+        key: $1
+    - sql: COMMIT;
+  - name: update
+    isolation: READ COMMITTED
+    timeout: 2s
+    steps:
+    - sql: BEGIN;
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - choice:
+          from:
+          - k2
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = v + 1 WHERE k = $1
+      args:
+      - k2
+      elle:
+        f: :write
+        key: $1
+    - sql: COMMIT;
+  - name: read-pair
+    isolation: READ COMMITTED
+    timeout: 1s
+    steps:
+    - sql: SELECT v FROM kv WHERE k IN ('k1','k2','k3','k4')
+      elle:
+        f: :read
+        key: all
+        value_from_result_col: 0
+  mix:
+  - txn: transfer
+    weight: 0.5578
+  - txn: update
+    weight: 0.3346
+  - txn: read-pair
+    weight: 0.1076
+scheduling:
+  duration: 10s
+  clients: 1
+  random_kill_pct: 0
+  jitter_ms_min: 1
+  jitter_ms_max: 5
+replay:
+  enabled: true
+  transactions:
+  - alias: start
+    txn: transfer
+  - alias: via
+    txn: update
+  - alias: end
+    txn: transfer
+  focus_key: k2
+  schedule:
+  - alias: start
+    action: step
+    steps: 3
+  - alias: via
+    action: step
+    steps: 2
+  - alias: end
+    action: step
+    steps: 3
+  - alias: start
+    action: step
+    steps: 0
+  - alias: via
+    action: step
+    steps: 0
+  - alias: end
+    action: step
+    steps: 0
+  - alias: via
+    action: commit
+  - alias: end
+    action: commit
+  - alias: start
+    action: commit
+  pause_after:
+    start:
+    - 3
+    via:
+    - 2
+    end:
+    - 3
