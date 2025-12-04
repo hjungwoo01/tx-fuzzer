@@ -113,6 +113,10 @@ The analyzer prints:
 - Detected cycles and near-miss paths (possible G2 anomalies).
 - Suggestions for intensifying contention (e.g., hot keys, scheduling tweaks).
 - Optional PNG visualization (`dependency_graph.png`) when the graph is small enough.
+- Anomaly hints: ambiguous WR edges (duplicate writers), initial-state WR edges,
+  RW edges across multiple overwriters, and dirty/intermediate read flags. Pass
+  `--run-elle` to also invoke the canonical Clojure Elle checker
+  (`clj.run_elle`) for full Adya/Elle anomaly classification.
 
 Because the analysis module exposes structured APIs (`AnalysisResult`, `FeedbackResult`), you can import it from other tooling to build custom heuristics.
 
