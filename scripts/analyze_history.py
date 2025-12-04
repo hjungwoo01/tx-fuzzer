@@ -4,7 +4,9 @@ Analyze Elle-style EDN histories and extract transaction dependency graphs.
 Features:
     * Parse EDN histories (full vectors or newline-delimited maps).
     * Group operations into committed transactions.
-    * Build wr/ww/rw dependency edges using NetworkX.
+    * Build wr/ww/rw dependency edges using NetworkX (with ambiguity markers).
+    * Seed initial-state WR edges and retain RW edges across multiple writers.
+    * Flag dirty/intermediate reads and optionally invoke the Clojure Elle checker.
     * Detect serialization anomalies via strongly connected components.
     * Surface near-miss cycles and provide feedback to tighten workloads.
     * Persist a visual graph (PNG) for manual inspection.
@@ -16,6 +18,8 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import shlex
+import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -24,21 +28,21 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional,
 
 try:
     import networkx as nx
-except ImportError as exc:  # pragma: no cover - clear error path
+except ImportError as exc:
     raise SystemExit(
         "[ERROR] Missing dependency networkx. Install with `pip install networkx`."
     ) from exc
 
 try:
     import matplotlib.pyplot as plt
-except ImportError as exc:  # pragma: no cover - clear error path
+except ImportError as exc:
     raise SystemExit(
         "[ERROR] Missing dependency matplotlib. Install with `pip install matplotlib`."
     ) from exc
 
 try:
     from edn_format import Keyword, Symbol, loads
-except ImportError as exc:  # pragma: no cover - clear error path
+except ImportError as exc:
     raise SystemExit(
         "[ERROR] Missing dependency edn_format. Install with `pip install edn_format`."
     ) from exc
@@ -85,6 +89,7 @@ class EdgeDetail:
     read_value: Any = None
     source_step: Optional[int] = None
     target_step: Optional[int] = None
+    ambiguous: bool = False
 
     def label(self) -> str:
         value_bits = []
@@ -93,7 +98,11 @@ class EdgeDetail:
         if self.read_value is not None:
             value_bits.append(f"read={self.read_value}")
         value_info = f" ({', '.join(value_bits)})" if value_bits else ""
-        return f"{self.dep_type.upper()} {self.source}->{self.target} key={self.key}{value_info}"
+        ambiguity = " [ambiguous]" if self.ambiguous else ""
+        return (
+            f"{self.dep_type.upper()} {self.source}->{self.target} key={self.key}"
+            f"{value_info}{ambiguity}"
+        )
 
 
 @dataclass(frozen=True)
@@ -148,6 +157,29 @@ class NearCycle:
         )
 
 
+@dataclass(frozen=True)
+class WriteRecord:
+    """Internal helper to track writes as we stream operations in order."""
+
+    txn_id: str
+    key: Any
+    value: Any
+    op_index: int
+    step_index: int
+    status: str
+
+
+@dataclass(frozen=True)
+class ReadRecord:
+    """Internal helper to track reads awaiting future writers."""
+
+    txn_id: str
+    key: Any
+    value: Any
+    op_index: int
+    step_index: int
+
+
 @dataclass
 class FeedbackResult:
     near_cycles: List[NearCycle]
@@ -168,6 +200,7 @@ class AnalysisResult:
     complete_density: float
     edges_per_txn: float
     edge_counts: Dict[str, int]
+    anomalies: Dict[str, List[Any]]
 
 
 def parse_args() -> argparse.Namespace:
@@ -203,6 +236,17 @@ def parse_args() -> argparse.Namespace:
         "--skip-graph",
         action="store_true",
         help="Disable dependency graph PNG rendering.",
+    )
+    parser.add_argument(
+        "--run-elle",
+        action="store_true",
+        help="Also invoke the Clojure Elle checker (clj.run-elle) for canonical anomaly detection.",
+    )
+    parser.add_argument(
+        "--elle-cmd",
+        type=str,
+        default="clojure -M -m clj.run_elle",
+        help="Command prefix for running the Elle checker (default: 'clojure -M -m clj.run_elle').",
     )
     return parser.parse_args()
 
@@ -260,7 +304,12 @@ def normalize_operation(item: Any) -> Optional[Operation]:
 
 
 def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transaction]:
-    """Pair invoke/ok events into committed transactions."""
+    """
+    Pair invoke/ok/fail events into transactions ordered by completion.
+
+    Returns both committed and failed transactions so that anomaly checks
+    (e.g., dirty reads) can reason about aborted writers.
+    """
     inflight: Dict[Any, Dict[str, Any]] = {}
     transactions: List[Transaction] = []
     txn_counter = 0
@@ -315,28 +364,34 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
                 raw_name = meta.get("txn_name") or meta.get("name")
                 if isinstance(raw_name, str):
                     template_name = raw_name
-            if status == "ok":
-                transactions.append(
-                    Transaction(
-                        txn_id=str(txn_id),
-                        process=process,
-                        status=status,
-                        ops=ops,
-                        start_time=start.get("time"),
-                        end_time=event.get("time"),
-                        index=len(transactions),
-                        template=template_name,
-                    )
+            transactions.append(
+                Transaction(
+                    txn_id=str(txn_id),
+                    process=process,
+                    status=status,
+                    ops=ops,
+                    start_time=start.get("time"),
+                    end_time=event.get("time"),
+                    index=len(transactions),
+                    template=template_name,
                 )
-        # Ignore other terminal types like :info/:fail for now.
+            )
     return transactions
 
 
 def build_dependency_graph(
     transactions: Sequence[Transaction],
 ) -> Tuple[nx.DiGraph, Dict[str, List[EdgeDetail]]]:
+    """
+    Construct WR/WW/RW edges over the supplied transactions.
+
+    Edges respect the order of operations as they appear in the transaction
+    list and within each transaction. Reads may attach to multiple writers when
+    duplicate values exist; those edges are marked ambiguous=True.
+    """
     graph = nx.DiGraph()
     edges: Dict[str, List[EdgeDetail]] = {"wr": [], "ww": [], "rw": []}
+    anomalies: Dict[str, List[Any]] = defaultdict(list)
 
     txn_lookup: Dict[str, Transaction] = {txn.txn_id: txn for txn in transactions}
     for txn in transactions:
@@ -349,8 +404,26 @@ def build_dependency_graph(
             end_time=txn.end_time,
         )
 
-    writes_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
-    last_readers: Dict[Any, Dict[str, Any]] = defaultdict(dict)
+    def ensure_init_node(key: Any) -> str:
+        node_id = "INIT"
+        if not graph.has_node(node_id):
+            graph.add_node(
+                node_id,
+                process=None,
+                status="ok",
+                index=-1,
+                synthetic=True,
+                start_time=None,
+                end_time=None,
+            )
+        return node_id
+
+    writes_by_key_all: Dict[Any, List[WriteRecord]] = defaultdict(list)
+    writes_by_key_value: Dict[Any, Dict[Any, List[WriteRecord]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    pending_reads: Dict[Any, List[ReadRecord]] = defaultdict(list)
+    op_counter = 0
 
     def record_edge(detail: EdgeDetail) -> None:
         dep_bucket = edges[detail.dep_type]
@@ -367,72 +440,102 @@ def build_dependency_graph(
     for txn in transactions:
         for op_index, op in enumerate(txn.ops):
             step_index = op_index + 1
+            global_index = op_counter
+            op_counter += 1
+
             if op.op_type == "r":
-                matching_writer: Optional[Dict[str, Any]] = None
+                candidate_writers: List[WriteRecord] = []
                 if op.value is not None:
-                    for candidate in reversed(writes_by_key.get(op.key, [])):
-                        if candidate["value"] == op.value:
-                            matching_writer = candidate
-                            break
-                if matching_writer and matching_writer["txn_id"] != txn.txn_id:
-                    detail = EdgeDetail(
-                        source=matching_writer["txn_id"],
-                        target=txn.txn_id,
-                        dep_type="wr",
-                        key=op.key,
-                        write_value=matching_writer["value"],
-                        read_value=op.value,
-                        source_step=matching_writer.get("step_index"),
-                        target_step=step_index,
+                    candidate_writers = list(
+                        writes_by_key_value.get(op.key, {}).get(op.value, [])
                     )
-                    record_edge(detail)
-                last_readers[op.key][txn.txn_id] = {
-                    "read_value": op.value,
-                    "txn_index": txn.index,
-                    "step_index": step_index,
-                }
+
+                if not candidate_writers and op.value is None:
+                    init_source = ensure_init_node(op.key)
+                    record_edge(
+                        EdgeDetail(
+                            source=init_source,
+                            target=txn.txn_id,
+                            dep_type="wr",
+                            key=op.key,
+                            read_value=op.value,
+                            source_step=None,
+                            target_step=step_index,
+                        )
+                    )
+                elif candidate_writers:
+                    ambiguous = len({w.txn_id for w in candidate_writers}) > 1
+                    for writer in candidate_writers:
+                        if writer.txn_id == txn.txn_id:
+                            continue
+                        detail = EdgeDetail(
+                            source=writer.txn_id,
+                            target=txn.txn_id,
+                            dep_type="wr",
+                            key=op.key,
+                            write_value=writer.value,
+                            read_value=op.value,
+                            source_step=writer.step_index,
+                            target_step=step_index,
+                            ambiguous=ambiguous,
+                        )
+                        record_edge(detail)
+                        if writer.status != "ok" and txn.status == "ok":
+                            anomalies["dirty_read"].append(detail)
+
+                pending_reads[op.key].append(
+                    ReadRecord(
+                        txn_id=txn.txn_id,
+                        key=op.key,
+                        value=op.value,
+                        op_index=global_index,
+                        step_index=step_index,
+                    )
+                )
+
             elif op.op_type == "w":
-                prior_writes = writes_by_key.get(op.key, [])
+                prior_writes = writes_by_key_all.get(op.key, [])
                 if prior_writes:
                     last_writer = prior_writes[-1]
-                    if last_writer["txn_id"] != txn.txn_id:
+                    if last_writer.txn_id != txn.txn_id:
                         detail = EdgeDetail(
-                            source=last_writer["txn_id"],
+                            source=last_writer.txn_id,
                             target=txn.txn_id,
                             dep_type="ww",
                             key=op.key,
                             write_value=op.value,
-                            source_step=last_writer.get("step_index"),
+                            source_step=last_writer.step_index,
                             target_step=step_index,
                         )
                         record_edge(detail)
 
-                readers = last_readers.get(op.key, {})
-                for reader_txn_id, info in readers.items():
-                    if reader_txn_id == txn.txn_id:
+                for reader in pending_reads.get(op.key, []):
+                    if reader.txn_id == txn.txn_id:
                         continue
                     detail = EdgeDetail(
-                        source=reader_txn_id,
+                        source=reader.txn_id,
                         target=txn.txn_id,
                         dep_type="rw",
                         key=op.key,
-                        read_value=info.get("read_value"),
+                        read_value=reader.value,
                         write_value=op.value,
-                        source_step=info.get("step_index"),
+                        source_step=reader.step_index,
                         target_step=step_index,
                     )
                     record_edge(detail)
-                last_readers[op.key] = {}
 
-                writes_by_key[op.key].append(
-                    {
-                        "txn_id": txn.txn_id,
-                        "value": op.value,
-                        "txn_index": txn.index,
-                        "step_index": step_index,
-                    }
+                write_record = WriteRecord(
+                    txn_id=txn.txn_id,
+                    key=op.key,
+                    value=op.value,
+                    op_index=global_index,
+                    step_index=step_index,
+                    status=txn.status,
                 )
-    return graph, edges
+                writes_by_key_all[op.key].append(write_record)
+                writes_by_key_value[op.key][op.value].append(write_record)
+
+    return graph, edges, anomalies
 
 
 def derive_feedback(
@@ -541,17 +644,52 @@ def derive_feedback(
     )
 
 
+def _detect_intermediate_reads(
+    transactions: Sequence[Transaction],
+    edges: Mapping[str, List[EdgeDetail]],
+) -> List[EdgeDetail]:
+    """
+    Identify reads of intermediate values: a reader observes a value that the
+    writer overwrote later in the same transaction before commit.
+    """
+    final_write_per_key: Dict[Tuple[str, Any], Any] = {}
+    status_lookup = {txn.txn_id: txn.status for txn in transactions}
+    for txn in transactions:
+        for op in txn.ops:
+            if op.op_type != "w":
+                continue
+            key = op.key
+            final_write_per_key[(txn.txn_id, key)] = op.value
+
+    intermediate: List[EdgeDetail] = []
+    for wr_edge in edges.get("wr", []):
+        if status_lookup.get(wr_edge.source) != "ok":
+            continue
+        final_val = final_write_per_key.get((wr_edge.source, wr_edge.key))
+        if final_val is None:
+            continue
+        if final_val != wr_edge.write_value:
+            intermediate.append(wr_edge)
+    return intermediate
+
+
 def analyze_transactions(
     transactions: Sequence[Transaction],
     max_near_paths: int = 10,
 ) -> AnalysisResult:
-    graph, edges = build_dependency_graph(transactions)
-    cycles = list(nx.simple_cycles(graph))
+    graph, edges, anomalies = build_dependency_graph(transactions)
+    intermediate_reads = _detect_intermediate_reads(transactions, edges)
+    if intermediate_reads:
+        anomalies["intermediate_read"].extend(intermediate_reads)
+    cycles: List[List[str]] = []
     sccs = [
         sorted(component)
         for component in nx.strongly_connected_components(graph)
         if len(component) > 1
     ]
+    # Current Threshold <= 200
+    if graph.number_of_nodes() <= 200:
+        cycles = list(nx.simple_cycles(graph))
     feedback = derive_feedback(graph, edges, transactions, max_paths=max_near_paths)
 
     total_edges = sum(len(bucket) for bucket in edges.values())
@@ -577,6 +715,7 @@ def analyze_transactions(
         complete_density=complete_density,
         edges_per_txn=edges_per_txn,
         edge_counts=edge_counts,
+        anomalies=dict(anomalies),
     )
 
 
@@ -600,6 +739,7 @@ def analyze_history_file(
             complete_density=0.0,
             edges_per_txn=0.0,
             edge_counts={dep: 0 for dep in ("wr", "ww", "rw")},
+            anomalies={},
         )
     return analyze_transactions(transactions, max_near_paths=max_near_paths)
 
@@ -644,6 +784,21 @@ def emit_edge_report(result: AnalysisResult, max_display: int = 50) -> None:
                 )
                 break
             print(f"    {detail.label()}")
+
+
+def emit_anomaly_report(result: AnalysisResult) -> None:
+    if not result.anomalies:
+        return
+    for name, entries in result.anomalies.items():
+        print(f"[WARN] {name} anomalies: {len(entries)}")
+        sample = entries[:5]
+        for item in sample:
+            if isinstance(item, EdgeDetail):
+                print(f"    {item.label()}")
+            else:
+                print(f"    {item}")
+        if len(entries) > len(sample):
+            print(f"    ... {len(entries) - len(sample)} more")
 
 
 def emit_cycle_report(result: AnalysisResult) -> None:
@@ -717,6 +872,31 @@ def draw_graph(
     print(f"[INFO] Saved dependency graph to {output_path}")
 
 
+def run_elle_checker(history_path: Path, elle_cmd: str) -> None:
+    """
+    Optionally delegate anomaly classification to the upstream Clojure Elle checker.
+    """
+    cmd_parts = shlex.split(elle_cmd) + [str(history_path)]
+    print(f"[INFO] Running Elle checker via: {' '.join(cmd_parts)}")
+    try:
+        completed = subprocess.run(
+            cmd_parts,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        print("[WARN] Elle command not found; skipping Elle run.")
+        return
+    if completed.stdout:
+        print("[ELLE STDOUT]")
+        print(completed.stdout.strip())
+    if completed.stderr:
+        print("[ELLE STDERR]")
+        print(completed.stderr.strip(), file=sys.stderr)
+    print(f"[INFO] Elle checker exit code: {completed.returncode}")
+
+
 def main() -> int:
     args = parse_args()
     if not args.history.exists():
@@ -734,13 +914,17 @@ def main() -> int:
         max_near_paths=max(args.max_suggestions, 0),
     )
 
-    if not result.transactions:
+    if not any(txn.status == "ok" for txn in result.transactions):
         print("[WARN] No committed transactions detected in history.")
     emit_metric_summary(result)
     emit_edge_report(result, max_display=max(args.max_edge_display, 0))
+    emit_anomaly_report(result)
     emit_cycle_report(result)
     emit_scc_report(result)
     emit_feedback_report(result)
+
+    if args.run_elle:
+        run_elle_checker(args.history, args.elle_cmd)
 
     if not args.skip_graph:
         draw_graph(
