@@ -1,0 +1,8 @@
+# Analysis + Graph
+pyyaml
+edn_format
+networkx
+matplotlib
+
+# Testing
+pytest
