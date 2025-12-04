@@ -35,7 +35,7 @@ import networkx as nx
 import yaml
 
 try:
-        from scripts.analyze_history import (  # type: ignore
+        from scripts.analyze_history import ( 
             EdgeDetail,
             Transaction,
             build_dependency_graph as _build_dependency_graph,
@@ -43,25 +43,22 @@ try:
             load_history,
         )
 except ImportError:
-    try:  # pragma: no cover - fallback for execution inside scripts/
-        from analyze_history import (  # type: ignore
+    try: 
+        from analyze_history import (
             EdgeDetail,
             Transaction,
             build_dependency_graph as _build_dependency_graph,
             extract_transactions,
             load_history,
         )
-    except ImportError as exc:  # pragma: no cover
+    except ImportError as exc:
         raise SystemExit(
             "[ERROR] Could not import analyze_history. "
             "Run this module from the repository root."
         ) from exc
 
 
-# ---------------------------------------------------------------------------
 # Parsing & graph construction helpers
-# ---------------------------------------------------------------------------
-
 
 def parse_history(file_path: Path) -> List[Transaction]:
     """Parse an Elle history, returning committed transactions only."""
@@ -78,13 +75,11 @@ class GraphArtifacts:
 
 def build_dependency_graph(transactions: Sequence[Transaction]) -> GraphArtifacts:
     """Construct a dependency graph (WR/WW/RW edges) using NetworkX."""
-    graph, edges = _build_dependency_graph(transactions)
+    graph, edges, _ = _build_dependency_graph(transactions)
     return GraphArtifacts(graph=graph, edges=edges)
 
 
-# ---------------------------------------------------------------------------
 # Analysis routines
-# ---------------------------------------------------------------------------
 
 
 def find_near_miss_cycles(
@@ -169,10 +164,7 @@ def summarize_edge_stats(artifacts: GraphArtifacts) -> Dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
 # Workload mutation helpers
-# ---------------------------------------------------------------------------
-
 
 def _ensure_list(obj: Iterable[Any]) -> List[Any]:
     return list(obj) if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)) else [obj]
@@ -247,7 +239,7 @@ def generate_mutations(
             if isinstance(args, list):
                 _mutate_args(args, hot_keys, changes)
 
-    # Inject a follow-up SELECT to close the most frequent missing edge.
+    # Inject a follow-up SELECT to close the most frequent missing edge
     if near_misses:
         first_miss = near_misses[0]
         target_key = (first_miss.get("keys") or hot_keys or [None])[0]
@@ -264,7 +256,6 @@ def generate_mutations(
                 f"to encourage edge {first_miss['end']}→{first_miss['start']} on key {target_key}"
             )
 
-    # Mix adjustments favouring writer-heavy transactions.
     mix = workload.get("mix", [])
     writer_txns = _detect_writer_transactions(workload)
     inflated = []
@@ -408,10 +399,7 @@ def build_replay_config(
     return replay_cfg
 
 
-# ---------------------------------------------------------------------------
 # Reporting helpers
-# ---------------------------------------------------------------------------
-
 
 def write_analysis_json(path: Path, payload: Dict[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as fh:
@@ -459,8 +447,8 @@ def document_changes(
 def visualize_graph(graph: nx.DiGraph, path: Path, max_nodes: int = 40) -> None:
     """Render a manageable subset of the dependency graph."""
     try:
-        import matplotlib.pyplot as plt  # type: ignore
-    except ImportError as exc:  # pragma: no cover
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
         print(f"[WARN] matplotlib not available; skipping graph render: {exc}")
         return
 
@@ -504,8 +492,8 @@ def draw_minimal_near_miss(
     if not near_misses:
         return None
     try:
-        import matplotlib.pyplot as plt  # type: ignore
-    except ImportError as exc:  # pragma: no cover
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
         print(f"[WARN] matplotlib not available; skipping minimal graph render: {exc}")
         return None
 
@@ -566,10 +554,7 @@ def draw_minimal_near_miss(
     return f"{candidate['end']} → {candidate['start']} ({label})"
 
 
-# ---------------------------------------------------------------------------
 # Iteration orchestration
-# ---------------------------------------------------------------------------
-
 
 def determine_next_iteration(output_root: Path) -> int:
     """Return the next iteration index based on existing run directories."""
@@ -608,10 +593,7 @@ def run_next_iteration(workload_path: Path, history_out: Path) -> subprocess.Com
     return subprocess.run(cmd, check=True, text=True, capture_output=False, env=env)
 
 
-# ---------------------------------------------------------------------------
 # Main driver
-# ---------------------------------------------------------------------------
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -700,7 +682,6 @@ def main() -> int:
         stats["near_misses"] = len(near_misses)
         stats["hot_keys"] = hot_keys
 
-        # Persist baseline artifacts
         shutil.copy2(history_path, iter_dir / "history.edn")
         shutil.copy2(workload_path, iter_dir / "input_workload.yaml")
         visualize_graph(
@@ -731,7 +712,7 @@ def main() -> int:
         new_workload_path = iter_dir / "workload.yaml"
         with new_workload_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(mutated_cfg, fh, sort_keys=False, default_flow_style=False)
-        # Persist a copy in the workloads directory for convenience.
+        
         workload_copy_path = workload_root / f"{iteration_label}.yaml"
         with workload_copy_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(mutated_cfg, fh, sort_keys=False, default_flow_style=False)
@@ -758,7 +739,6 @@ def main() -> int:
                 print(f"[ERROR] Runner failed: {exc}", file=sys.stderr)
                 return exc.returncode
         else:
-            # Prepare for potential manual follow-up.
             history_path = iter_dir / "history.edn"
             workload_path = new_workload_path
 
