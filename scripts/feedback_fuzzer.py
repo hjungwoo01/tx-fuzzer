@@ -40,13 +40,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
-    # When executed from repository root we can import through the scripts package.
     from scripts.analyze_history import (
         AnalysisResult,
         NearCycle,
         analyze_history_file,
     )
-except ImportError:  # pragma: no cover - fallback for direct invocation
+except ImportError:
     from analyze_history import (  # type: ignore
         AnalysisResult,
         NearCycle,
@@ -225,7 +224,6 @@ def prepare_config_for_iteration(
     keep_schema_init: bool,
 ) -> Dict[str, Any]:
     cfg = copy.deepcopy(cfg)
-    # Allow CLI -out flag to control history target by clearing config override.
     cfg.pop("out", None)
     if not keep_schema_init and iteration > 0:
         cfg["init_schema"] = False
@@ -515,7 +513,7 @@ def build_replay_config(
             add_step("via", step)
         add_step("end", near.end_step)
     else:
-        # Fall back to draining transactions sequentially before commit.
+        # Fall back to draining transactions sequentially before commit
         pause_after = {}
 
     for alias in ("start", "via", "end"):
@@ -804,7 +802,7 @@ def main() -> int:
     args = parse_args()
     try:
         orchestrate(args)
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         print(f"[ERROR] feedback fuzzer failed: {exc}", file=sys.stderr)
         return 1
     return 0
