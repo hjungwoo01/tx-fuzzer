@@ -45,7 +45,6 @@ Thumbs.db
 /tmp/
 /history.json
 /results/
-*.txt
 *.json
 
 # --- Docker / Compose ---
