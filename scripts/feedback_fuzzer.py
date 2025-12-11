@@ -132,6 +132,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Execute generated replay schedules and fold the outcome back into key selection.",
     )
+    replay_after_first = parser.add_mutually_exclusive_group()
+    replay_after_first.add_argument(
+        "--replay-after-first",
+        dest="replay_after_first",
+        action="store_true",
+        help="Use deterministic replay configs for iterations after the first (default).",
+    )
+    replay_after_first.add_argument(
+        "--no-replay-after-first",
+        dest="replay_after_first",
+        action="store_false",
+        help="Disable automatic replay use after the first iteration.",
+    )
+    parser.set_defaults(replay_after_first=True)
+    parser.add_argument(
+        "--replay-sleep-ms",
+        type=int,
+        default=5,
+        help="Optional sleep inserted between replay schedule actions to better control interleavings (0 to disable).",
+    )
     parser.add_argument(
         "--verbose",
         action="store_true",
@@ -323,12 +343,53 @@ def evaluate_replay(
     return success
 
 
+def select_best_cycles(
+    cycles: Sequence[NearCycle],
+) -> Tuple[Optional[NearCycle], Optional[NearCycle]]:
+    """
+    Pick the strongest missing edge (best cycle closure) and a k-edge booster.
+
+    We prefer higher cycle_gain (bounded simple-path count * edge support), then
+    path_count. The booster is the next candidate that would close multiple
+    bounded paths (path_count > 1) to amplify cycles; fallback is the second
+    best overall.
+    """
+    if not cycles:
+        return None, None
+    ranked = sorted(
+        cycles,
+        key=lambda nc: (
+            nc.cycle_gain,
+            nc.path_count,
+            len(nc.start_edge_types) + len(nc.via_edge_types),
+        ),
+        reverse=True,
+    )
+    best = ranked[0]
+    booster: Optional[NearCycle] = None
+    for candidate in ranked[1:]:
+        if candidate.path_count > 1 or candidate.cycle_gain > 1:
+            booster = candidate
+            break
+    if booster is None and len(ranked) > 1:
+        booster = ranked[1]
+    return best, booster
+
+
 def select_target_keys(
     result: AnalysisResult,
     ctx: IterationContext,
+    best_cycle: Optional[NearCycle] = None,
+    booster_cycle: Optional[NearCycle] = None,
     max_keys: int = 4,
 ) -> List[Any]:
     counter: Counter[Any] = Counter()
+    priority: List[Any] = []
+
+    for cycle in (best_cycle, booster_cycle):
+        if cycle and cycle.key is not None and cycle.key not in priority:
+            priority.append(cycle.key)
+
     for near in result.feedback.near_cycles:
         if near.key is None:
             continue
@@ -337,17 +398,25 @@ def select_target_keys(
         failures = ctx.replay_failures.get(cycle_key, 0)
         if failures:
             weight += 3 * failures
+        weight += int(max(0, near.cycle_gain - 1))
         counter[near.key] += weight
     for key, count in result.feedback.key_pressure.items():
         counter[key] += count
-    if not counter and ctx.last_target_keys:
-        counter.update({key: 1 for key in ctx.last_target_keys})
-    if not counter and ctx.base_keys:
-        counter.update({key: 1 for key in ctx.base_keys})
-    ranked = [key for key, _ in counter.most_common(max_keys)]
-    if not ranked:
-        return ctx.last_target_keys or ctx.base_keys
-    return ranked
+
+    ranked = [key for key, _ in counter.most_common() if key not in priority]
+
+    if not priority and not ranked:
+        ranked.extend(ctx.base_keys)
+
+    preserved = [k for k in ctx.last_target_keys if k not in priority and k not in ranked]
+
+    merged: List[Any] = []
+    for key in priority + preserved + ranked:
+        if key not in merged:
+            merged.append(key)
+        if len(merged) >= max_keys:
+            break
+    return merged
 
 
 def retarget_transactions(
@@ -417,11 +486,13 @@ def build_next_config(
     cfg: Dict[str, Any],
     result: AnalysisResult,
     ctx: IterationContext,
+    best_cycle: Optional[NearCycle],
+    booster_cycle: Optional[NearCycle],
 ) -> Dict[str, Any]:
     next_cfg = copy.deepcopy(cfg)
     workload = next_cfg.setdefault("workload", {})
     transactions = workload.get("transactions", [])
-    target_keys = select_target_keys(result, ctx)
+    target_keys = select_target_keys(result, ctx, best_cycle, booster_cycle)
     retarget_transactions(transactions, target_keys)
     ctx.last_target_keys = target_keys
 
@@ -436,12 +507,13 @@ def build_next_config(
 
 def build_replay_config(
     cfg: Dict[str, Any],
-    result: AnalysisResult,
+    target_cycle: Optional[NearCycle],
+    sleep_ms: int = 0,
 ) -> Optional[Dict[str, Any]]:
-    if not result.feedback.near_cycles:
+    if not target_cycle:
         return None
 
-    near = result.feedback.near_cycles[0]
+    near = target_cycle
     triplet = [
         ("start", near.start_template),
         ("via", near.via_template),
@@ -493,6 +565,11 @@ def build_replay_config(
 
     schedule: List[Dict[str, Any]] = []
     pause_after: Dict[str, List[int]] = {}
+    sleep_ms = max(0, sleep_ms)
+
+    def maybe_sleep() -> None:
+        if sleep_ms > 0:
+            schedule.append({"action": "sleep", "sleep": f"{sleep_ms}ms"})
 
     if step_info_available:
         executed: Dict[str, int] = {}
@@ -505,6 +582,7 @@ def build_replay_config(
                 return
             schedule.append({"alias": alias, "action": "step", "steps": target - prev})
             executed[alias] = target
+            maybe_sleep()
 
         if near.start_step:
             pause_after["start"] = [near.start_step]
@@ -526,14 +604,18 @@ def build_replay_config(
 
     for alias in ("start", "via", "end"):
         schedule.append({"alias": alias, "action": "step", "steps": 0})
+        maybe_sleep()
 
     schedule.extend(
         [
             {"alias": "via", "action": "commit"},
+            {"action": "sleep", "sleep": f"{sleep_ms}ms"} if sleep_ms > 0 else None,
             {"alias": "end", "action": "commit"},
+            {"action": "sleep", "sleep": f"{sleep_ms}ms"} if sleep_ms > 0 else None,
             {"alias": "start", "action": "commit"},
         ]
     )
+    schedule = [step for step in schedule if step is not None]
 
     replay_cfg["replay"]["schedule"] = schedule
     if pause_after:
@@ -564,6 +646,8 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "key": nc.key,
                 "start_edge_types": list(nc.start_edge_types),
                 "via_edge_types": list(nc.via_edge_types),
+                "path_count": nc.path_count,
+                "cycle_gain": nc.cycle_gain,
                 "start_template": nc.start_template,
                 "via_template": nc.via_template,
                 "end_template": nc.end_template,
@@ -587,6 +671,8 @@ def serialize_analysis(result: AnalysisResult) -> Dict[str, Any]:
                 "start_step": nc.start_step,
                 "via_step": nc.via_step_to_end,
                 "target_step": nc.end_step,
+                "path_count": nc.path_count,
+                "cycle_gain": nc.cycle_gain,
             }
             for nc in result.feedback.near_cycles
         ],
@@ -602,13 +688,18 @@ def save_analysis_json(result: AnalysisResult, path: Path) -> None:
         json.dump(data, fh, indent=2, sort_keys=False)
 
 
-def draw_minimal_graph(result: AnalysisResult, path: Path) -> Optional[str]:
-    if not result.feedback.near_cycles:
+def draw_minimal_graph(
+    result: AnalysisResult,
+    path: Path,
+    target_cycle: Optional[NearCycle] = None,
+) -> Optional[str]:
+    target = target_cycle or (result.feedback.near_cycles[0] if result.feedback.near_cycles else None)
+    if not target:
         print("[WARN] No near cycles detected; skipping minimal graph export.")
         return None
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    near = result.feedback.near_cycles[0]
+    near = target
     g = nx.DiGraph()
     nodes = {near.start, near.via, near.end}
     for node in nodes:
@@ -690,6 +781,7 @@ def orchestrate(args: argparse.Namespace) -> None:
         last_target_keys=[],
     )
     current_cfg = copy.deepcopy(base_cfg)
+    pending_replay_cycle: Optional[NearCycle] = None
 
     for iteration in range(args.iterations):
         context.iteration_index = iteration
@@ -710,9 +802,23 @@ def orchestrate(args: argparse.Namespace) -> None:
         print(f"[ITER {iteration}] Config saved to {iter_cfg_path}")
         print(f"[ITER {iteration}] Target keys: {context.last_target_keys or context.base_keys}")
 
+        config_to_run = iter_cfg_path
+        replay_cfg_path: Optional[Path] = None
+        if (
+            args.replay_after_first
+            and iteration > 0
+            and pending_replay_cycle is not None
+        ):
+            replay_cfg = build_replay_config(iter_cfg, pending_replay_cycle, sleep_ms=args.replay_sleep_ms)
+            if replay_cfg:
+                replay_cfg_path = iter_dir / "replay.yaml"
+                save_yaml(replay_cfg, replay_cfg_path)
+                config_to_run = replay_cfg_path
+                print(f"[ITER {iteration}] Using deterministic replay config {replay_cfg_path} targeting {pending_replay_cycle.end}->{pending_replay_cycle.start}")
+
         if not args.skip_run:
             try:
-                run_tx_runner(runner_cmd, iter_cfg_path, history_path)
+                run_tx_runner(runner_cmd, config_to_run, history_path)
             except subprocess.CalledProcessError as exc:
                 print(f"[ERROR] Runner failed (iteration {iteration}): {exc}")
                 break
@@ -727,6 +833,7 @@ def orchestrate(args: argparse.Namespace) -> None:
             history_path,
             max_near_paths=max(args.max_near_cycles, 1),
         )
+        best_cycle, booster_cycle = select_best_cycles(result.feedback.near_cycles)
 
         export_adjacency_matrix(
             result.graph,
@@ -743,13 +850,13 @@ def orchestrate(args: argparse.Namespace) -> None:
         }
 
         minimal_graph_path = iter_dir / "minimal_dependency_graph.png"
-        missing_edge = draw_minimal_graph(result, minimal_graph_path)
+        missing_edge = draw_minimal_graph(result, minimal_graph_path, target_cycle=best_cycle)
         if missing_edge:
             print(
                 f"[ITER {iteration}] Missing edge to target → {missing_edge}"
             )
 
-        replay_cfg = build_replay_config(iter_cfg, result)
+        replay_cfg = build_replay_config(iter_cfg, best_cycle, sleep_ms=args.replay_sleep_ms)
         replay_outcome: Optional[bool] = None
         if replay_cfg:
             replay_cfg_path = iter_dir / "replay.yaml"
@@ -757,22 +864,22 @@ def orchestrate(args: argparse.Namespace) -> None:
             print(
                 f"[ITER {iteration}] Deterministic replay config → {replay_cfg_path}"
             )
-            if args.run_replay and result.feedback.near_cycles:
+            if args.run_replay and best_cycle:
                 replay_outcome = evaluate_replay(
                     runner_cmd,
                     replay_cfg_path,
                     iter_dir,
-                    result.feedback.near_cycles[0],
+                    best_cycle,
                     context,
                     args.max_near_cycles,
                 )
                 if replay_outcome is True:
                     print(
-                        f"[ITER {iteration}] Replay closed edge {result.feedback.near_cycles[0].end}→{result.feedback.near_cycles[0].start}"
+                        f"[ITER {iteration}] Replay closed edge {best_cycle.end}→{best_cycle.start}"
                     )
                 elif replay_outcome is False:
                     print(
-                        f"[ITER {iteration}] Replay did not close edge {result.feedback.near_cycles[0].end}→{result.feedback.near_cycles[0].start}; boosting priority"
+                        f"[ITER {iteration}] Replay did not close edge {best_cycle.end}→{best_cycle.start}; boosting priority"
                     )
                 else:
                     print(f"[ITER {iteration}] Replay execution failed; will retry later")
@@ -793,7 +900,8 @@ def orchestrate(args: argparse.Namespace) -> None:
 
         save_analysis_json(result, analysis_path)
 
-        current_cfg = build_next_config(iter_cfg, result, context)
+        current_cfg = build_next_config(iter_cfg, result, context, best_cycle, booster_cycle)
+        pending_replay_cycle = best_cycle if args.replay_after_first else None
         next_mix = current_cfg.get("workload", {}).get("mix", [])
         sched = current_cfg.get("scheduling", {})
         mix_str = ", ".join(

@@ -115,6 +115,8 @@ class NearCycle:
     key: Any
     start_edge_types: Tuple[str, ...]
     via_edge_types: Tuple[str, ...]
+    path_count: int = 0  # count of bounded simple paths from start to end
+    cycle_gain: float = 0.0  # heuristic cycles closed if the missing edge is added
     start_template: Optional[str] = None
     via_template: Optional[str] = None
     end_template: Optional[str] = None
@@ -594,6 +596,14 @@ def derive_feedback(
 
             start_edge_types = tuple(sorted(graph[src][mid].get("types", set())))
             via_edge_types = tuple(sorted(graph[mid][dst].get("types", set())))
+            path_count = _bounded_simple_paths_count(
+                graph,
+                src,
+                dst,
+                max_len=5,
+            )
+            edge_support = max(1, len(start_edge_types) + len(via_edge_types))
+            cycle_gain = path_count * edge_support
             start_txn = txn_lookup.get(src)
             via_txn = txn_lookup.get(mid)
             end_txn = txn_lookup.get(dst)
@@ -605,6 +615,8 @@ def derive_feedback(
                     key=key_hint,
                     start_edge_types=start_edge_types,
                     via_edge_types=via_edge_types,
+                    path_count=path_count,
+                    cycle_gain=cycle_gain,
                     start_template=start_txn.template if start_txn else None,
                     via_template=via_txn.template if via_txn else None,
                     end_template=end_txn.template if end_txn else None,
@@ -637,6 +649,16 @@ def derive_feedback(
             if path_counter >= max_paths:
                 truncated = True
                 break
+
+    near_cycles = sorted(
+        near_cycles,
+        key=lambda nc: (
+            nc.cycle_gain,
+            nc.path_count,
+            len(nc.start_edge_types) + len(nc.via_edge_types),
+        ),
+        reverse=True,
+    )
 
     key_pressure: Dict[Any, int] = defaultdict(int)
     for bucket in edges.values():
@@ -688,6 +710,39 @@ def _detect_intermediate_reads(
         if final_val != wr_edge.write_value:
             intermediate.append(wr_edge)
     return intermediate
+
+
+def _bounded_simple_paths_count(
+    graph: nx.DiGraph,
+    src: str,
+    dst: str,
+    max_len: int = 5,
+) -> int:
+    """
+    Count simple paths from src to dst with length <= max_len (edges).
+
+    This serves as a bounded estimate for how many cycles the missing edge
+    dst->src would close. Enumerating all simple paths is intractable; we cap
+    search depth to keep runtime practical while still reflecting k-edge
+    cycle-closure potential.
+    """
+    if src == dst or max_len <= 0:
+        return 0
+    count = 0
+    stack: List[Tuple[str, int, set[str]]] = [(src, 0, {src})]
+    while stack:
+        node, depth, visited = stack.pop()
+        if depth >= max_len:
+            continue
+        for succ in graph.successors(node):
+            if succ in visited:
+                continue
+            if succ == dst:
+                count += 1
+                continue
+            if depth + 1 < max_len:
+                stack.append((succ, depth + 1, visited | {succ}))
+    return count
 
 
 def analyze_transactions(

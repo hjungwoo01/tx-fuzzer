@@ -96,6 +96,25 @@ def find_near_miss_cycles(
         - key hints collected from the existing edges
         - count (frequency)
     """
+    def _bounded_simple_paths_count(src: str, dst: str, max_len: int = 5) -> int:
+        if src == dst or max_len <= 0:
+            return 0
+        count = 0
+        stack: List[Tuple[str, int, set[str]]] = [(src, 0, {src})]
+        while stack:
+            node, depth, visited = stack.pop()
+            if depth >= max_len:
+                continue
+            for succ in graph.successors(node):
+                if succ in visited:
+                    continue
+                if succ == dst:
+                    count += 1
+                    continue
+                if depth + 1 < max_len:
+                    stack.append((succ, depth + 1, visited | {succ}))
+        return count
+
     triplet_counter: Counter[Tuple[str, str, str]] = Counter()
     key_hints: Dict[Tuple[str, str, str], List[Any]] = defaultdict(list)
 
@@ -115,7 +134,27 @@ def find_near_miss_cycles(
 
     ranked: List[Dict[str, Any]] = []
     templates = templates or {}
-    for (start, via, end), count in triplet_counter.most_common():
+    ordered = sorted(
+        triplet_counter.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    scored: List[Tuple[Tuple[str, str, str], int, float, int]] = []
+    for (start, via, end), count in ordered:
+        path_count = _bounded_simple_paths_count(start, end, max_len=5)
+        rels_src_mid = graph[start][via].get("relationships", []) if graph.has_edge(start, via) else []
+        rels_mid_dst = graph[via][end].get("relationships", []) if graph.has_edge(via, end) else []
+        edge_support = (
+            (len(graph[start][via].get("types", set())) if graph.has_edge(start, via) else 0)
+            + (len(graph[via][end].get("types", set())) if graph.has_edge(via, end) else 0)
+        )
+        edge_support = max(1, edge_support)
+        cycle_gain = path_count * edge_support
+        scored.append(((start, via, end), count, cycle_gain, path_count))
+
+    scored.sort(key=lambda item: (item[2], item[3], item[1]), reverse=True)
+
+    for (start, via, end), count, cycle_gain, path_count in scored:
         keys = key_hints.get((start, via, end)) or []
         rels_src_mid = graph[start][via].get("relationships", []) if graph.has_edge(start, via) else []
         rels_mid_dst = graph[via][end].get("relationships", []) if graph.has_edge(via, end) else []
@@ -135,6 +174,8 @@ def find_near_miss_cycles(
                 "via_step_from_start": edge_sm.target_step if edge_sm else None,
                 "via_step_to_end": edge_md.source_step if edge_md else None,
                 "end_step": edge_md.target_step if edge_md else None,
+                "path_count": path_count,
+                "cycle_gain": cycle_gain,
             }
         )
     return ranked

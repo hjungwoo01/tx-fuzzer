@@ -106,6 +106,18 @@ def test_near_cycle_feedback_present():
     assert result.feedback.suggestions
 
 
+def test_near_cycle_scoring_present():
+    events = []
+    events += build_txn_events("t1", 0, [[":w", "k1", 1]])
+    events += build_txn_events("t2", 1, [[":r", "k1", 1], [":w", "k2", 2]])
+    events += build_txn_events("t3", 2, [[":r", "k2", 2]])
+    result = analyze(events)
+    assert result.feedback.near_cycles
+    top = result.feedback.near_cycles[0]
+    assert top.path_count >= 1
+    assert top.cycle_gain >= 1
+
+
 def test_adjacency_export_dense_and_sparse(tmp_path):
     events = []
     events += build_txn_events("t1", 0, [[":w", "k", 1]])
