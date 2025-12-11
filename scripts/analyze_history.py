@@ -209,6 +209,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("history", type=Path, help="Path to history.edn")
     parser.add_argument(
+        "--adjacency-output",
+        type=Path,
+        default=Path("dependency_adjacency.tsv"),
+        help="Where to save the adjacency matrix or sparse edge list.",
+    )
+    parser.add_argument(
+        "--adjacency-dense-limit",
+        type=int,
+        default=400,
+        help="Maximum node count to emit a dense adjacency matrix; larger graphs fall back to a sparse edge list.",
+    )
+    parser.add_argument(
+        "--skip-adjacency",
+        action="store_true",
+        help="Disable adjacency export (useful when you only need console summaries).",
+    )
+    parser.add_argument(
         "--graph-output",
         type=Path,
         default=Path("dependency_graph.png"),
@@ -606,10 +623,10 @@ def derive_feedback(
                 "[SUGGESTION] Schedule "
                 f"{dst} closer to {src} (reduced delay or weaker isolation like Read Committed) to encourage the missing dependency."
             )
-            src_reads = sum(1 for op in txn_lookup[src].ops if op.op_type == "r")
-            src_writes = sum(1 for op in txn_lookup[src].ops if op.op_type == "w")
-            dst_reads = sum(1 for op in txn_lookup[dst].ops if op.op_type == "r")
-            dst_writes = sum(1 for op in txn_lookup[dst].ops if op.op_type == "w")
+            src_reads = sum(1 for op in start_txn.ops if op.op_type == "r") if start_txn else 0
+            src_writes = sum(1 for op in start_txn.ops if op.op_type == "w") if start_txn else 0
+            dst_reads = sum(1 for op in end_txn.ops if op.op_type == "r") if end_txn else 0
+            dst_writes = sum(1 for op in end_txn.ops if op.op_type == "w") if end_txn else 0
             if src_reads + dst_reads and src_writes + dst_writes:
                 suggestions.append(
                     "[SUGGESTION] Adjust read/write mix so "
@@ -872,6 +889,65 @@ def draw_graph(
     print(f"[INFO] Saved dependency graph to {output_path}")
 
 
+def export_adjacency_matrix(
+    graph: nx.DiGraph,
+    output_path: Path,
+    dense_limit: int = 400,
+) -> None:
+    """
+    Persist a textual view of the full dependency graph.
+
+    For graphs up to `dense_limit` nodes, this writes a tab-separated dense
+    matrix with rows keyed by source txn and columns by destination txn. For
+    larger graphs we fall back to a sparse edge list to keep the file
+    manageable while still covering every edge.
+    """
+    node_count = graph.number_of_nodes()
+    edge_count = graph.number_of_edges()
+    if node_count == 0:
+        output_path.write_text("# Empty graph\n", encoding="utf-8")
+        print(f"[INFO] Saved empty adjacency matrix to {output_path}")
+        return
+
+    dense_limit = max(dense_limit, 0)
+    nodes = sorted(graph.nodes, key=lambda n: graph.nodes[n].get("index", 0))
+
+    def _edge_label(data: Mapping[str, Any]) -> str:
+        if not isinstance(data, Mapping):
+            return "1"
+        if "label" in data and data["label"]:
+            return str(data["label"])
+        rels = data.get("types", set())
+        return "|".join(sorted(map(str, rels))) if rels else "1"
+
+    if dense_limit == 0 or node_count <= dense_limit:
+        header = ["source/dest"] + [str(n) for n in nodes]
+        with output_path.open("w", encoding="utf-8") as fh:
+            fh.write("\t".join(header) + "\n")
+            for src in nodes:
+                row = [str(src)]
+                src_edges = graph[src]
+                for dst in nodes:
+                    if dst in src_edges:
+                        row.append(_edge_label(src_edges[dst]))
+                    else:
+                        row.append("0")
+                fh.write("\t".join(row) + "\n")
+        print(
+            f"[INFO] Saved dense adjacency matrix to {output_path} "
+            f"({node_count} nodes, {edge_count} edges)."
+        )
+    else:
+        with output_path.open("w", encoding="utf-8") as fh:
+            fh.write("# Sparse adjacency list: source\ttarget\tlabel\n")
+            for src, dst, data in graph.edges(data=True):
+                fh.write(f"{src}\t{dst}\t{_edge_label(data)}\n")
+        print(
+            f"[INFO] Saved sparse adjacency list to {output_path} "
+            f"({node_count} nodes, {edge_count} edges; dense limit={dense_limit})."
+        )
+
+
 def run_elle_checker(history_path: Path, elle_cmd: str) -> None:
     """
     Optionally delegate anomaly classification to the upstream Clojure Elle checker.
@@ -931,6 +1007,12 @@ def main() -> int:
             result.graph,
             args.graph_output,
             max_nodes=args.max_graph_nodes,
+        )
+    if not args.skip_adjacency:
+        export_adjacency_matrix(
+            result.graph,
+            args.adjacency_output,
+            dense_limit=max(args.adjacency_dense_limit, 0),
         )
     return 0
 

@@ -44,12 +44,14 @@ try:
         AnalysisResult,
         NearCycle,
         analyze_history_file,
+        export_adjacency_matrix,
     )
 except ImportError:
     from analyze_history import (  # type: ignore
         AnalysisResult,
         NearCycle,
         analyze_history_file,
+        export_adjacency_matrix,
     )
 
 RunnerCommand = Sequence[str]
@@ -108,6 +110,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=12,
         help="Maximum near-cycle paths to analyze per iteration.",
+    )
+    parser.add_argument(
+        "--adjacency-dense-limit",
+        type=int,
+        default=400,
+        help="Maximum nodes for dense adjacency export before falling back to a sparse edge list.",
     )
     parser.add_argument(
         "--skip-run",
@@ -720,6 +728,11 @@ def orchestrate(args: argparse.Namespace) -> None:
             max_near_paths=max(args.max_near_cycles, 1),
         )
 
+        export_adjacency_matrix(
+            result.graph,
+            iter_dir / "dependency_adjacency.tsv",
+            dense_limit=max(args.adjacency_dense_limit, 0),
+        )
         current_cycle_keys = {
             (nc.start, nc.via, nc.end) for nc in result.feedback.near_cycles
         }
