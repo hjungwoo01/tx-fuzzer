@@ -61,6 +61,7 @@ Per iteration the fuzzer will:
 - Summarize the analysis in `runs/demo/iter_XX/analysis.json`.
 - Render `runs/demo/iter_XX/minimal_dependency_graph.png`, a tiny subgraph that highlights the missing dependency edge the next workload should try to force.
 - Export `runs/demo/iter_XX/dependency_adjacency.tsv`, a full adjacency view of the dependency graph (dense for small graphs, sparse edge list for large ones).
+- From iteration 1 onward the loop can automatically switch to deterministic `replay.yaml` schedules (with optional inter-action sleeps) to precisely order reads/writes and force the highest-scoring missing edge; disable with `--no-replay-after-first`.
 - Update key hot-spots, mix weights, and client counts for the next iteration.
 
 Use `--skip-run` together with a custom `--runner-cmd` (e.g., a copier script) when you want to replay pre-generated histories.
@@ -115,6 +116,7 @@ The analyzer prints:
 - Suggestions for intensifying contention (e.g., hot keys, scheduling tweaks).
 - Optional PNG visualization (`dependency_graph.png`) when the graph is small enough.
 - Adjacency export (`dependency_adjacency.tsv`) so you can inspect the full graph even when PNG rendering is skipped; large graphs fall back to a sparse edge list.
+- Near-miss ranking uses bounded simple-path counts (k-edge cycle boost) to pick the missing edge that would close the most cycles, so feedback focuses on the highest-leverage edge additions.
 - Anomaly hints: ambiguous WR edges (duplicate writers), initial-state WR edges,
   RW edges across multiple overwriters, and dirty/intermediate read flags. Pass
   `--run-elle` to also invoke the canonical Clojure Elle checker
