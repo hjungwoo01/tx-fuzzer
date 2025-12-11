@@ -39,6 +39,7 @@ try:
             EdgeDetail,
             Transaction,
             build_dependency_graph as _build_dependency_graph,
+            export_adjacency_matrix,
             extract_transactions,
             load_history,
         )
@@ -48,6 +49,7 @@ except ImportError:
             EdgeDetail,
             Transaction,
             build_dependency_graph as _build_dependency_graph,
+            export_adjacency_matrix,
             extract_transactions,
             load_history,
         )
@@ -640,6 +642,12 @@ def parse_args() -> argparse.Namespace:
         default=40,
         help="Maximum nodes to include in the rendered dependency graph.",
     )
+    parser.add_argument(
+        "--adjacency-dense-limit",
+        type=int,
+        default=400,
+        help="Maximum nodes for dense adjacency export before falling back to a sparse edge list.",
+    )
     return parser.parse_args()
 
 
@@ -684,6 +692,11 @@ def main() -> int:
 
         shutil.copy2(history_path, iter_dir / "history.edn")
         shutil.copy2(workload_path, iter_dir / "input_workload.yaml")
+        export_adjacency_matrix(
+            artifacts.graph,
+            iter_dir / "dependency_adjacency.tsv",
+            dense_limit=max(args.adjacency_dense_limit, 0),
+        )
         visualize_graph(
             artifacts.graph,
             iter_dir / "dependency_graph.png",
