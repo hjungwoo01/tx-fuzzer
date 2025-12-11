@@ -104,3 +104,22 @@ def test_near_cycle_feedback_present():
     result = analyze(events)
     assert any(nc.start == "t1" and nc.via == "t2" and nc.end == "t3" for nc in result.feedback.near_cycles)
     assert result.feedback.suggestions
+
+
+def test_adjacency_export_dense_and_sparse(tmp_path):
+    events = []
+    events += build_txn_events("t1", 0, [[":w", "k", 1]])
+    events += build_txn_events("t2", 1, [[":r", "k", 1]])
+    result = analyze(events)
+
+    dense_path = tmp_path / "dense.tsv"
+    ah.export_adjacency_matrix(result.graph, dense_path, dense_limit=10)
+    dense_lines = dense_path.read_text().strip().splitlines()
+    assert dense_lines[0].split("\t")[1:] == ["t1", "t2"]
+    assert "t1\t0\twr" in dense_lines
+
+    sparse_path = tmp_path / "sparse.tsv"
+    ah.export_adjacency_matrix(result.graph, sparse_path, dense_limit=1)
+    sparse_lines = sparse_path.read_text().strip().splitlines()
+    assert sparse_lines[0].startswith("# Sparse adjacency list")
+    assert any(line.startswith("t1\tt2\t") for line in sparse_lines[1:])
