@@ -75,7 +75,11 @@ func main() {
 	}
 	var runErr error
 	if cfg.Replay.Enabled {
-		runErr = runner.RunReplay(ctx, env)
+		if cfg.Replay.BackgroundClients > 0 || cfg.Replay.BackgroundDuration > 0 {
+			runErr = runner.RunHybrid(ctx, env)
+		} else {
+			runErr = runner.RunReplay(ctx, env)
+		}
 	} else {
 		runErr = runner.Run(ctx, env)
 	}

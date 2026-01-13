@@ -39,11 +39,16 @@ func RunReplay(ctx context.Context, env *Env) error {
 		return errors.New("replay requested without replay.enabled=true")
 	}
 	plans := workload.BuildPlans(env.Cfg.Workload)
-	env.Start = time.Now()
+	if env.Start.IsZero() {
+		env.Start = time.Now()
+	}
 
 	states := make(map[string]*replayTxnState, len(replayCfg.Transactions))
 	usedProcess := map[int]struct{}{}
-	processCounter := 0
+	processCounter := replayCfg.ProcessOffset
+	if processCounter < 0 {
+		processCounter = 0
+	}
 
 	for _, spec := range replayCfg.Transactions {
 		plan, ok := plans[spec.Txn]

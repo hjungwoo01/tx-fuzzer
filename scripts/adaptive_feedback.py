@@ -219,18 +219,72 @@ def _coerce_keys(sample_args: List[Any], hot_keys: List[Any]) -> List[Any]:
     """
     if not hot_keys:
         return []
-    canonical = hot_keys
     if sample_args:
         exemplar = sample_args[0]
         if isinstance(exemplar, int):
-            canonical = [int(k) for k in hot_keys]
+            canonical = []
+            for key in hot_keys:
+                try:
+                    canonical.append(int(key))
+                except (TypeError, ValueError):
+                    canonical.append(key)
+            return canonical
         elif isinstance(exemplar, str):
-            canonical = [str(k) for k in hot_keys]
-    return canonical
+            return [str(k) for k in hot_keys]
+    return list(hot_keys)
 
 
-def _mutate_args(args: List[Any], hot_keys: List[Any], changes: List[str]) -> None:
-    """Restrict key-choice arguments to the provided hot_keys."""
+def _bias_choice_list(original: List[Any], hot_keys: List[Any], bias: int) -> List[Any]:
+    if not hot_keys:
+        return original
+    bias = max(1, bias)
+    coerced = _coerce_keys(original, hot_keys)
+    if not coerced:
+        return original
+    max_len = 200
+    biased: List[Any] = []
+    for _ in range(bias):
+        biased.extend(coerced)
+    biased.extend(original)
+    if len(biased) <= max_len:
+        return biased
+    head_room = max(0, max_len - len(original))
+    if head_room == 0:
+        return original
+    trimmed: List[Any] = []
+    for i in range(head_room):
+        trimmed.append(coerced[i % len(coerced)])
+    trimmed.extend(original)
+    return trimmed
+
+
+def _iter_queries(txn: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+    queries = txn.get("queries", [])
+    if isinstance(queries, list):
+        for query in queries:
+            if isinstance(query, dict):
+                yield query
+    for step in txn.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        nested = step.get("queries")
+        if isinstance(nested, list):
+            for query in nested:
+                if isinstance(query, dict):
+                    yield query
+            continue
+        if step.get("sql"):
+            yield step
+
+
+def _mutate_args(
+    args: List[Any],
+    hot_keys: List[Any],
+    changes: List[str],
+    mode: str = "strict",
+    bias: int = 3,
+) -> None:
+    """Restrict or bias key-choice arguments to the provided hot_keys."""
     if not hot_keys:
         return
     for idx, arg in enumerate(args):
@@ -238,14 +292,20 @@ def _mutate_args(args: List[Any], hot_keys: List[Any], changes: List[str]) -> No
             choice = arg["choice"]
             if isinstance(choice, dict) and "from" in choice:
                 original = _ensure_list(choice.get("from", []))
-                narrowed = _coerce_keys(original, hot_keys)
-                if narrowed and narrowed != original:
-                    choice["from"] = narrowed
-                    changes.append(f"Restricted choice list {original} → {narrowed}")
-        elif isinstance(arg, (int, str)):
+                if mode == "bias":
+                    biased = _bias_choice_list(original, hot_keys, bias)
+                    if biased and biased != original:
+                        choice["from"] = biased
+                        changes.append(f"Biased choice list {original} → {biased}")
+                else:
+                    narrowed = _coerce_keys(original, hot_keys)
+                    if narrowed and narrowed != original:
+                        choice["from"] = narrowed
+                        changes.append(f"Restricted choice list {original} → {narrowed}")
+        elif mode == "strict" and isinstance(arg, (int, str)):
             if arg not in hot_keys and len(hot_keys) == 1:
                 original = arg
-                replacement = hot_keys[0]
+                replacement = _coerce_keys([arg], hot_keys)[0]
                 args[idx] = replacement
                 changes.append(f"Replaced literal key {original} → {replacement}")
 
@@ -256,8 +316,8 @@ def _detect_writer_transactions(workload_cfg: Dict[str, Any]) -> set[str]:
         name = txn.get("name")
         if not name:
             continue
-        for step in txn.get("steps", []):
-            elle = step.get("elle", {})
+        for query in _iter_queries(txn):
+            elle = query.get("elle", {})
             if isinstance(elle, dict) and str(elle.get("f", "")).lower() in {":write", ":w"}:
                 writers.add(name)
                 break
@@ -276,18 +336,39 @@ def generate_mutations(
 
     workload = cfg.setdefault("workload", {})
     transactions = workload.get("transactions", [])
+    focus_keys = hot_keys
+    target_templates: set[str] = set()
+    if near_misses:
+        first_miss = near_misses[0]
+        focus_keys = first_miss.get("keys") or hot_keys
+        for key in ("start_template", "via_template", "end_template"):
+            tmpl = first_miss.get(key)
+            if tmpl:
+                target_templates.add(tmpl)
+    mode = "bias" if target_templates else "strict"
     for txn in transactions:
-        for step in txn.get("steps", []):
-            args = step.get("args", [])
+        name = txn.get("name")
+        if target_templates and name not in target_templates:
+            continue
+        for query in _iter_queries(txn):
+            args = query.get("args", [])
             if isinstance(args, list):
-                _mutate_args(args, hot_keys, changes)
+                _mutate_args(args, focus_keys, changes, mode=mode, bias=3)
 
     # Inject a follow-up SELECT to close the most frequent missing edge
     if near_misses:
         first_miss = near_misses[0]
         target_key = (first_miss.get("keys") or hot_keys or [None])[0]
         if target_key is not None and transactions:
-            target_txn = transactions[0]
+            target_name = first_miss.get("start_template") or first_miss.get("end_template")
+            target_txn = None
+            if target_name:
+                for txn in transactions:
+                    if txn.get("name") == target_name:
+                        target_txn = txn
+                        break
+            if target_txn is None:
+                target_txn = transactions[0]
             new_step = {
                 "sql": "SELECT v FROM kv WHERE k=$1",
                 "args": [{"choice": {"from": [target_key]}}],
@@ -430,13 +511,20 @@ def build_replay_config(
     if focus_keys:
         replay_cfg["replay"]["focus_key"] = focus_keys[0]
         dummy_changes: List[str] = []
+        target_templates = {template for _, template in triplet if template}
         for txn in replay_cfg.get("workload", {}).get("transactions", []):
-            for step in txn.get("steps", []):
-                args = step.get("args", [])
+            if target_templates and txn.get("name") not in target_templates:
+                continue
+            for query in _iter_queries(txn):
+                args = query.get("args", [])
                 if isinstance(args, list):
-                    _mutate_args(args, [focus_keys[0]], dummy_changes)
+                    _mutate_args(args, [focus_keys[0]], dummy_changes, mode="bias", bias=3)
 
     scheduling = replay_cfg.setdefault("scheduling", {})
+    background_clients = int(scheduling.get("clients", 1))
+    if background_clients > 0:
+        replay_cfg["replay"]["background_clients"] = background_clients
+        replay_cfg["replay"]["process_offset"] = background_clients
     scheduling["clients"] = 1
     scheduling.pop("barrier_every", None)
     return replay_cfg

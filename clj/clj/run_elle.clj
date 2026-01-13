@@ -2,6 +2,7 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
+            [clojure.string :as str]
             [clj.rw_register :as rw-register]
             [jepsen.history :as h])
   (:gen-class))
@@ -190,14 +191,83 @@
 ;; Model runner
 ;; -------------------------------
 (def candidate-models
-  [:strict-serializable :serializable :snapshot-isolation :repeatable-read :read-committed])
+  [:snapshot-isolation])
+
+(def allowed-models
+  #{:strict-serializable :serializable :snapshot-isolation :repeatable-read :read-committed})
+
+(def model-aliases
+  {"rr" :repeatable-read
+   "repeatable-read" :repeatable-read
+   "si" :snapshot-isolation
+   "snapshot" :snapshot-isolation
+   "snapshot-isolation" :snapshot-isolation
+   "serializable" :serializable
+   "strict-serializable" :strict-serializable
+   "rc" :read-committed
+   "read-committed" :read-committed})
+
+(def usage-text
+  (str "Usage: clj -M:run <history.edn> [--model <name>|--models <a,b,c>]\n"
+       "  --model/--models: One or more of "
+       (pr-str (sort allowed-models)) "\n"
+       "  aliases: rr, si, rc, snapshot\n"))
+
+(defn normalize-model
+  [s]
+  (let [s (-> s str/lower-case str/trim)
+        s (if (str/starts-with? s ":") (subs s 1) s)
+        kw (get model-aliases s (keyword s))]
+    (when-not (contains? allowed-models kw)
+      (throw (ex-info "Unknown consistency model" {:model s})))
+    kw))
+
+(defn parse-models
+  [s]
+  (let [parts (->> (str/split s #",")
+                   (map str/trim)
+                   (remove str/blank?))]
+    (when (empty? parts)
+      (throw (ex-info "No consistency models provided" {:model s})))
+    (vec (map normalize-model parts))))
+
+(defn parse-args
+  [args]
+  (loop [args (vec args)
+         opts {:file nil :models candidate-models}]
+    (if (empty? args)
+      opts
+      (let [arg (first args)]
+        (cond
+          (or (= arg "-h") (= arg "--help"))
+          (do (println usage-text) (System/exit 0))
+
+          (or (= arg "--model") (= arg "--models"))
+          (if-let [val (second args)]
+            (recur (subvec args 2) (assoc opts :models (parse-models val)))
+            (do (println "Missing value for" arg) (println usage-text) (System/exit 1)))
+
+          (str/starts-with? arg "-")
+          (do (println "Unknown flag:" arg) (println usage-text) (System/exit 1))
+
+          (:file opts)
+          (do (println "Unexpected extra argument:" arg) (println usage-text) (System/exit 1))
+
+          :else
+          (recur (subvec args 1) (assoc opts :file arg)))))))
 
 ;; -------------------------------
 (defn -main [& args]
   (println "[run-elle] starting, args =" (vec args))
-  (let [file (first args)]
+  (let [{:keys [file models]}
+        (try
+          (parse-args args)
+          (catch Exception e
+            (println (.getMessage e))
+            (println usage-text)
+            (System/exit 1)))]
     (when-not file
-      (println "Usage: make analyse HIST=<history.edn>")
+      (println usage-text)
       (System/exit 1))
     (println "[run-elle] reading history from" file)
     (let [raw (read-history file)]
@@ -229,7 +299,7 @@
           (System/exit 2))
 
         (let [hist  (h/history elle-ops)
-              opts  {:consistency-models candidate-models}
+              opts  {:consistency-models models}
               check (rw-register/check opts hist)
               valid (:valid? check)]
           (println "\n=== ELLE ANALYSIS ===")

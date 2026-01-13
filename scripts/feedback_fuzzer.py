@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
     from scripts.analyze_history import (
@@ -153,6 +153,28 @@ def parse_args() -> argparse.Namespace:
         help="Optional sleep inserted between replay schedule actions to better control interleavings (0 to disable).",
     )
     parser.add_argument(
+        "--preserve-graph",
+        action="store_true",
+        help="Limit mutations to the target edge templates and bias key choices to keep other edges stable.",
+    )
+    parser.add_argument(
+        "--key-bias",
+        type=int,
+        default=3,
+        help="When --preserve-graph is set, duplicate target keys in choice lists to bias selection.",
+    )
+    parser.add_argument(
+        "--replay-background-clients",
+        type=int,
+        default=0,
+        help="If >0, run deterministic replay alongside a background workload with this many clients.",
+    )
+    parser.add_argument(
+        "--stop-on-bug",
+        action="store_true",
+        help="Stop the feedback loop when cycles or anomalies are detected and save a bug report.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Emit verbose logs for config mutations.",
@@ -205,8 +227,8 @@ def extract_candidate_keys(cfg: Dict[str, Any]) -> List[Any]:
     keys: List[Any] = []
     workload = cfg.get("workload", {})
     for txn in workload.get("transactions", []):
-        for step in txn.get("steps", []):
-            for arg in step.get("args", []):
+        for query in _iter_queries(txn):
+            for arg in query.get("args", []):
                 if isinstance(arg, dict) and "choice" in arg:
                     choice = arg["choice"]
                     if isinstance(choice, dict):
@@ -224,6 +246,25 @@ def extract_candidate_keys(cfg: Dict[str, Any]) -> List[Any]:
     return deduped
 
 
+def _iter_queries(txn: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+    queries = txn.get("queries", [])
+    if isinstance(queries, list):
+        for query in queries:
+            if isinstance(query, dict):
+                yield query
+    for step in txn.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        nested = step.get("queries")
+        if isinstance(nested, list):
+            for query in nested:
+                if isinstance(query, dict):
+                    yield query
+            continue
+        if step.get("sql"):
+            yield step
+
+
 def classify_transactions(cfg: Dict[str, Any]) -> Dict[str, Dict[str, bool]]:
     profiles: Dict[str, Dict[str, bool]] = {}
     workload = cfg.get("workload", {})
@@ -233,8 +274,8 @@ def classify_transactions(cfg: Dict[str, Any]) -> Dict[str, Dict[str, bool]]:
             continue
         writes = False
         reads = False
-        for step in txn.get("steps", []):
-            elle = step.get("elle")
+        for query in _iter_queries(txn):
+            elle = query.get("elle")
             if not isinstance(elle, dict):
                 continue
             f = str(elle.get("f", "")).lower()
@@ -419,29 +460,92 @@ def select_target_keys(
     return merged
 
 
+def _ensure_list(obj: Any) -> List[Any]:
+    if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
+        return list(obj)
+    return [obj]
+
+
+def _coerce_keys(sample: List[Any], target_keys: List[Any]) -> List[Any]:
+    if not target_keys:
+        return []
+    if sample:
+        exemplar = sample[0]
+        if isinstance(exemplar, int):
+            coerced: List[Any] = []
+            for key in target_keys:
+                try:
+                    coerced.append(int(key))
+                except (TypeError, ValueError):
+                    coerced.append(key)
+            return coerced
+        if isinstance(exemplar, str):
+            return [str(key) for key in target_keys]
+    return list(target_keys)
+
+
+def _bias_choice_list(original: List[Any], target_keys: List[Any], bias: int) -> List[Any]:
+    if not target_keys:
+        return original
+    bias = max(1, bias)
+    coerced = _coerce_keys(original, target_keys)
+    if not coerced:
+        return original
+    max_len = 200
+    biased: List[Any] = []
+    for _ in range(bias):
+        biased.extend(coerced)
+    biased.extend(original)
+    if len(biased) <= max_len:
+        return biased
+    head_room = max(0, max_len - len(original))
+    if head_room == 0:
+        return original
+    trimmed: List[Any] = []
+    for i in range(head_room):
+        trimmed.append(coerced[i % len(coerced)])
+    trimmed.extend(original)
+    return trimmed
+
+
 def retarget_transactions(
     transactions: List[Dict[str, Any]],
     target_keys: List[Any],
+    target_templates: Optional[Sequence[str]] = None,
+    mode: str = "strict",
+    bias: int = 3,
 ) -> None:
     if not target_keys:
         return
+    template_set = set(target_templates) if target_templates else None
     for txn in transactions:
-        for step in txn.get("steps", []):
+        name = txn.get("name")
+        if template_set and name not in template_set:
+            continue
+        for query in _iter_queries(txn):
+            args = query.get("args", [])
+            if not isinstance(args, list):
+                continue
             new_args: List[Any] = []
-            for arg in step.get("args", []):
-                new_args.append(_retarget_arg(arg, target_keys))
+            for arg in args:
+                new_args.append(_retarget_arg(arg, target_keys, mode=mode, bias=bias))
             if new_args:
-                step["args"] = new_args
+                query["args"] = new_args
 
 
-def _retarget_arg(arg: Any, target_keys: List[Any]) -> Any:
+def _retarget_arg(arg: Any, target_keys: List[Any], mode: str = "strict", bias: int = 3) -> Any:
     if isinstance(arg, dict) and "choice" in arg:
         choice = arg["choice"]
-        if isinstance(choice, dict):
-            choice["from"] = list(target_keys)
+        if isinstance(choice, dict) and "from" in choice:
+            original = _ensure_list(choice.get("from", []))
+            if mode == "bias":
+                choice["from"] = _bias_choice_list(original, target_keys, bias)
+            else:
+                choice["from"] = _coerce_keys(original, target_keys)
         return arg
-    if isinstance(arg, (int, str)) and len(target_keys) == 1:
-        return target_keys[0]
+    if mode == "strict" and isinstance(arg, (int, str)) and len(target_keys) == 1:
+        coerced = _coerce_keys([arg], target_keys)
+        return coerced[0] if coerced else arg
     return arg
 
 
@@ -488,20 +592,38 @@ def build_next_config(
     ctx: IterationContext,
     best_cycle: Optional[NearCycle],
     booster_cycle: Optional[NearCycle],
+    preserve_graph: bool = False,
+    key_bias: int = 3,
 ) -> Dict[str, Any]:
     next_cfg = copy.deepcopy(cfg)
     workload = next_cfg.setdefault("workload", {})
     transactions = workload.get("transactions", [])
     target_keys = select_target_keys(result, ctx, best_cycle, booster_cycle)
-    retarget_transactions(transactions, target_keys)
+    target_templates: Optional[List[str]] = None
+    if preserve_graph:
+        cycle = best_cycle or booster_cycle
+        if cycle:
+            target_templates = [
+                t
+                for t in (cycle.start_template, cycle.via_template, cycle.end_template)
+                if t
+            ]
+    mode = "bias" if preserve_graph else "strict"
+    retarget_transactions(
+        transactions,
+        target_keys,
+        target_templates=target_templates,
+        mode=mode,
+        bias=key_bias,
+    )
     ctx.last_target_keys = target_keys
+    if not preserve_graph:
+        profiles = classify_transactions(next_cfg)
+        mix = workload.get("mix", [])
+        adjust_mix(mix, profiles, result)
 
-    profiles = classify_transactions(next_cfg)
-    mix = workload.get("mix", [])
-    adjust_mix(mix, profiles, result)
-
-    scheduling = next_cfg.setdefault("scheduling", {})
-    adjust_scheduling(scheduling, result, ctx.iteration_index)
+        scheduling = next_cfg.setdefault("scheduling", {})
+        adjust_scheduling(scheduling, result, ctx.iteration_index)
     return next_cfg
 
 
@@ -509,6 +631,9 @@ def build_replay_config(
     cfg: Dict[str, Any],
     target_cycle: Optional[NearCycle],
     sleep_ms: int = 0,
+    background_clients: int = 0,
+    key_mode: str = "strict",
+    key_bias: int = 3,
 ) -> Optional[Dict[str, Any]]:
     if not target_cycle:
         return None
@@ -551,6 +676,9 @@ def build_replay_config(
         retarget_transactions(
             replay_cfg.get("workload", {}).get("transactions", []),
             [near.key],
+            target_templates=[template for _, template in triplet],
+            mode=key_mode,
+            bias=key_bias,
         )
 
     step_info_available = any(
@@ -622,6 +750,9 @@ def build_replay_config(
         replay_cfg["replay"]["pause_after"] = pause_after
 
     scheduling = replay_cfg.setdefault("scheduling", {})
+    if background_clients > 0:
+        replay_cfg["replay"]["background_clients"] = background_clients
+        replay_cfg["replay"]["process_offset"] = background_clients
     scheduling["clients"] = 1
     scheduling.pop("barrier_every", None)
     return replay_cfg
@@ -686,6 +817,22 @@ def save_analysis_json(result: AnalysisResult, path: Path) -> None:
     data = serialize_analysis(result)
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, sort_keys=False)
+
+
+def record_bug_report(result: AnalysisResult, iter_dir: Path) -> bool:
+    if not result.cycles and not result.sccs and not result.anomalies:
+        return False
+    report = {
+        "cycle_count": len(result.cycles),
+        "scc_count": len(result.sccs),
+        "anomaly_counts": {name: len(entries) for name, entries in result.anomalies.items()},
+        "sample_cycles": result.cycles[:5],
+        "sample_sccs": result.sccs[:5],
+    }
+    bug_path = iter_dir / "bug_report.json"
+    bug_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"[BUG] Potential anomaly detected; report saved to {bug_path}")
+    return True
 
 
 def draw_minimal_graph(
@@ -783,6 +930,14 @@ def orchestrate(args: argparse.Namespace) -> None:
     current_cfg = copy.deepcopy(base_cfg)
     pending_replay_cycle: Optional[NearCycle] = None
 
+    def resolve_background_clients(cfg: Dict[str, Any]) -> int:
+        if args.replay_background_clients > 0:
+            return args.replay_background_clients
+        if args.preserve_graph:
+            sched = cfg.get("scheduling", {})
+            return int(sched.get("clients", 1))
+        return 0
+
     for iteration in range(args.iterations):
         context.iteration_index = iteration
         iter_dir = args.output_dir / f"iter_{iteration:02d}"
@@ -809,7 +964,14 @@ def orchestrate(args: argparse.Namespace) -> None:
             and iteration > 0
             and pending_replay_cycle is not None
         ):
-            replay_cfg = build_replay_config(iter_cfg, pending_replay_cycle, sleep_ms=args.replay_sleep_ms)
+            replay_cfg = build_replay_config(
+                iter_cfg,
+                pending_replay_cycle,
+                sleep_ms=args.replay_sleep_ms,
+                background_clients=resolve_background_clients(iter_cfg),
+                key_mode="bias" if args.preserve_graph else "strict",
+                key_bias=max(args.key_bias, 1),
+            )
             if replay_cfg:
                 replay_cfg_path = iter_dir / "replay.yaml"
                 save_yaml(replay_cfg, replay_cfg_path)
@@ -856,7 +1018,14 @@ def orchestrate(args: argparse.Namespace) -> None:
                 f"[ITER {iteration}] Missing edge to target → {missing_edge}"
             )
 
-        replay_cfg = build_replay_config(iter_cfg, best_cycle, sleep_ms=args.replay_sleep_ms)
+        replay_cfg = build_replay_config(
+            iter_cfg,
+            best_cycle,
+            sleep_ms=args.replay_sleep_ms,
+            background_clients=resolve_background_clients(iter_cfg),
+            key_mode="bias" if args.preserve_graph else "strict",
+            key_bias=max(args.key_bias, 1),
+        )
         replay_outcome: Optional[bool] = None
         if replay_cfg:
             replay_cfg_path = iter_dir / "replay.yaml"
@@ -899,8 +1068,19 @@ def orchestrate(args: argparse.Namespace) -> None:
             result.feedback.near_cycles[idx] = replace(nc, replay_attempts=attempts)
 
         save_analysis_json(result, analysis_path)
+        bug_found = record_bug_report(result, iter_dir)
+        if bug_found and args.stop_on_bug:
+            break
 
-        current_cfg = build_next_config(iter_cfg, result, context, best_cycle, booster_cycle)
+        current_cfg = build_next_config(
+            iter_cfg,
+            result,
+            context,
+            best_cycle,
+            booster_cycle,
+            preserve_graph=args.preserve_graph,
+            key_bias=max(args.key_bias, 1),
+        )
         pending_replay_cycle = best_cycle if args.replay_after_first else None
         next_mix = current_cfg.get("workload", {}).get("mix", [])
         sched = current_cfg.get("scheduling", {})

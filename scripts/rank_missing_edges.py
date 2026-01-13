@@ -120,6 +120,23 @@ def parse_args() -> argparse.Namespace:
         default=5,
         help="Sleep inserted between replay steps/commits for finer ordering (0 to disable).",
     )
+    parser.add_argument(
+        "--preserve-graph",
+        action="store_true",
+        help="Bias key choices only in edge templates to keep other edges stable.",
+    )
+    parser.add_argument(
+        "--key-bias",
+        type=int,
+        default=3,
+        help="Bias multiplier for choice lists when --preserve-graph is set.",
+    )
+    parser.add_argument(
+        "--replay-background-clients",
+        type=int,
+        default=0,
+        help="If >0, include background workload clients in the replay config.",
+    )
     return parser.parse_args()
 
 
@@ -327,25 +344,107 @@ def score_candidates(
 # Workload mutation helpers
 
 
-def _mutate_args(args: List[Any], hot_keys: List[Any]) -> None:
-    """Restrict choice lists/literal args to focus keys."""
+def _ensure_list(obj: Any) -> List[Any]:
+    if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes)):
+        return list(obj)
+    return [obj]
+
+
+def _coerce_keys(sample: List[Any], hot_keys: List[Any]) -> List[Any]:
+    if not hot_keys:
+        return []
+    if sample:
+        exemplar = sample[0]
+        if isinstance(exemplar, int):
+            coerced: List[Any] = []
+            for key in hot_keys:
+                try:
+                    coerced.append(int(key))
+                except (TypeError, ValueError):
+                    coerced.append(key)
+            return coerced
+        if isinstance(exemplar, str):
+            return [str(key) for key in hot_keys]
+    return list(hot_keys)
+
+
+def _bias_choice_list(original: List[Any], hot_keys: List[Any], bias: int) -> List[Any]:
+    if not hot_keys:
+        return original
+    bias = max(1, bias)
+    coerced = _coerce_keys(original, hot_keys)
+    if not coerced:
+        return original
+    max_len = 200
+    biased: List[Any] = []
+    for _ in range(bias):
+        biased.extend(coerced)
+    biased.extend(original)
+    if len(biased) <= max_len:
+        return biased
+    head_room = max(0, max_len - len(original))
+    if head_room == 0:
+        return original
+    trimmed: List[Any] = []
+    for i in range(head_room):
+        trimmed.append(coerced[i % len(coerced)])
+    trimmed.extend(original)
+    return trimmed
+
+
+def _mutate_args(args: List[Any], hot_keys: List[Any], mode: str = "strict", bias: int = 3) -> None:
+    """Restrict or bias choice lists/literal args to focus keys."""
     if not hot_keys:
         return
     for idx, arg in enumerate(args):
         if isinstance(arg, dict) and "choice" in arg:
             choice = arg["choice"]
             if isinstance(choice, dict) and "from" in choice:
-                choice["from"] = list(hot_keys)
-        elif isinstance(arg, (int, str)) and len(hot_keys) == 1:
-            args[idx] = hot_keys[0]
+                original = _ensure_list(choice.get("from", []))
+                if mode == "bias":
+                    choice["from"] = _bias_choice_list(original, hot_keys, bias)
+                else:
+                    choice["from"] = _coerce_keys(original, hot_keys)
+        elif mode == "strict" and isinstance(arg, (int, str)) and len(hot_keys) == 1:
+            coerced = _coerce_keys([arg], hot_keys)
+            if coerced:
+                args[idx] = coerced[0]
 
 
-def _retarget_transactions(transactions: List[Dict[str, Any]], hot_keys: List[Any]) -> None:
+def _iter_queries(txn: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+    queries = txn.get("queries", [])
+    if isinstance(queries, list):
+        for query in queries:
+            if isinstance(query, dict):
+                yield query
+    for step in txn.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        nested = step.get("queries")
+        if isinstance(nested, list):
+            for query in nested:
+                if isinstance(query, dict):
+                    yield query
+            continue
+        if step.get("sql"):
+            yield step
+
+
+def _retarget_transactions(
+    transactions: List[Dict[str, Any]],
+    hot_keys: List[Any],
+    target_templates: Optional[Set[str]] = None,
+    mode: str = "strict",
+    bias: int = 3,
+) -> None:
     for txn in transactions:
-        for step in txn.get("steps", []):
-            args = step.get("args", [])
+        name = txn.get("name")
+        if target_templates and name not in target_templates:
+            continue
+        for query in _iter_queries(txn):
+            args = query.get("args", [])
             if isinstance(args, list):
-                _mutate_args(args, hot_keys)
+                _mutate_args(args, hot_keys, mode=mode, bias=bias)
 
 
 def _boost_mix(mix: List[Dict[str, Any]], favored: Set[str], boost: float = 2.0) -> None:
@@ -367,6 +466,9 @@ def build_replay_config_for_edge(
     best: CandidateEdge,
     template_map: Dict[str, Optional[str]],
     sleep_ms: int,
+    background_clients: int = 0,
+    key_mode: str = "strict",
+    key_bias: int = 3,
 ) -> Optional[Dict[str, Any]]:
     start_tmpl = template_map.get(best.add_from)
     end_tmpl = template_map.get(best.add_to)
@@ -455,6 +557,9 @@ def build_replay_config_for_edge(
             "schedule": schedule,
         }
     }
+    if background_clients > 0:
+        replay["replay"]["background_clients"] = background_clients
+        replay["replay"]["process_offset"] = background_clients
 
     # Retarget keys inside the replay workload as well.
     focus_keys = best.key_hints[:1] if best.key_hints else []
@@ -463,6 +568,9 @@ def build_replay_config_for_edge(
         _retarget_transactions(
             replay_workload.get("workload", {}).get("transactions", []),
             focus_keys,
+            target_templates={start_tmpl, end_tmpl},
+            mode=key_mode,
+            bias=key_bias,
         )
     replay.update(replay_workload)
     return replay
@@ -473,13 +581,17 @@ def build_targeted_workload(
     best: CandidateEdge,
     transactions: Sequence[Any],
     sleep_ms: int = 0,
+    preserve_graph: bool = False,
+    key_bias: int = 3,
+    replay_background_clients: int = 0,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     cfg = yaml.safe_load(base_path.read_text(encoding="utf-8"))
     workload = cfg.get("workload", {})
     txns = workload.get("transactions", [])
     mix = workload.get("mix", [])
-    focus_keys = best.key_hints[:2] if best.key_hints else []
-    _retarget_transactions(txns, focus_keys)
+    if preserve_graph and replay_background_clients <= 0:
+        sched = cfg.get("scheduling", {})
+        replay_background_clients = int(sched.get("clients", 1))
 
     # Build txn_id -> template map from history metadata
     template_map: Dict[str, Optional[str]] = {}
@@ -490,12 +602,32 @@ def build_targeted_workload(
     favored_templates = {
         t for t in (template_map.get(best.add_from), template_map.get(best.add_to)) if t
     }
+    focus_keys = best.key_hints[:2] if best.key_hints else []
+    mode = "bias" if preserve_graph else "strict"
+    target_templates = favored_templates if preserve_graph and favored_templates else None
+    if focus_keys:
+        _retarget_transactions(
+            txns,
+            focus_keys,
+            target_templates=target_templates,
+            mode=mode,
+            bias=key_bias,
+        )
     if favored_templates:
-        _boost_mix(mix, favored_templates, boost=3.0)
+        boost = 1.4 if preserve_graph else 3.0
+        _boost_mix(mix, favored_templates, boost=boost)
     cfg["workload"]["transactions"] = txns
     cfg["workload"]["mix"] = mix
 
-    replay_cfg = build_replay_config_for_edge(cfg, best, template_map, sleep_ms=sleep_ms)
+    replay_cfg = build_replay_config_for_edge(
+        cfg,
+        best,
+        template_map,
+        sleep_ms=sleep_ms,
+        background_clients=replay_background_clients,
+        key_mode=mode,
+        key_bias=key_bias,
+    )
     return cfg, replay_cfg
 
 
@@ -556,6 +688,9 @@ def main() -> int:
                 best,
                 transactions,
                 sleep_ms=args.replay_sleep_ms,
+                preserve_graph=args.preserve_graph,
+                key_bias=max(args.key_bias, 1),
+                replay_background_clients=max(args.replay_background_clients, 0),
             )
             args.output_workload.parent.mkdir(parents=True, exist_ok=True)
             args.output_workload.write_text(

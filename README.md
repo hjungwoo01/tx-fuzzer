@@ -68,6 +68,27 @@ Use `--skip-run` together with a custom `--runner-cmd` (e.g., a copier script) w
 
 ---
 
+### Run Without Python Scripts
+
+If you just want to run a workload and feed the resulting history to Elle:
+
+```bash
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+go run ./cmd/runner -config workloads/seed.yaml -out seed_history.edn
+go run ./cmd/runner -config workloads/write_skew.yaml -out history.edn
+```
+
+Then run Elle directly with a specific consistency model:
+
+```bash
+clj -J-Djava.awt.headless=true -M:run history.edn --model snapshot-isolation
+```
+
+`--model/--models` accepts comma-separated values (e.g., `repeatable-read,read-committed`), and aliases like `rr`, `si`, and `rc`.
+Note: Postgres `REPEATABLE READ` implements snapshot isolation semantics, so `--model snapshot-isolation` is the most accurate check for RR on Postgres.
+
+---
+
 ### Workload Transactions
 
 Transaction templates can now specify ordered query lists executed on a shared session:
@@ -196,6 +217,11 @@ Run the replay directly with the existing runner:
 ```bash
 go run ./cmd/runner --config runs/demo/iter_03/replay.yaml
 ```
+
+To preserve the surrounding dependency graph while still forcing the missing edge, you can
+enable hybrid replay by setting `replay.background_clients` (and optionally `replay.process_offset`
+to avoid process-id collisions). In this mode the runner executes the replay schedule alongside
+the normal workload so you keep the existing edges while targeting the missing one.
 
 The runner honours the `schedule` list exactly: `step` events advance a transaction by the requested number of steps (zero means “drain the remainder”), while `commit`/`rollback` finalise the transaction. Optional `sleep` events insert delays, and additional aliases or actions can be edited in the generated YAML to experiment with custom interleavings. The `pause_after` map records the exact step counts chosen by the exporter so you can see where the replay pauses before hopping to another transaction. When `focus_key` is present the tooling has already narrowed choice lists so every replayed transaction targets that key.
 

@@ -86,10 +86,13 @@ type ReplayStep struct {
 }
 
 type Replay struct {
-	Enabled      bool             `yaml:"enabled"`
-	Transactions []ReplayTxn      `yaml:"transactions,omitempty"`
-	Schedule     []ReplayStep     `yaml:"schedule,omitempty"`
-	PauseAfter   map[string][]int `yaml:"pause_after,omitempty"`
+	Enabled            bool             `yaml:"enabled"`
+	Transactions       []ReplayTxn      `yaml:"transactions,omitempty"`
+	Schedule           []ReplayStep     `yaml:"schedule,omitempty"`
+	PauseAfter         map[string][]int `yaml:"pause_after,omitempty"`
+	BackgroundClients  int              `yaml:"background_clients,omitempty"`
+	BackgroundDuration time.Duration    `yaml:"background_duration,omitempty"`
+	ProcessOffset      int              `yaml:"process_offset,omitempty"`
 }
 
 type Root struct {

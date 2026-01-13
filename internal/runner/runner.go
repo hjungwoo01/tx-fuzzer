@@ -14,17 +14,20 @@ import (
 )
 
 type Env struct {
-	Drv   driver.Driver
-	Cfg   *config.Root
-	Hist  *history.Writer
-	Start time.Time
+	Drv              driver.Driver
+	Cfg              *config.Root
+	Hist             *history.Writer
+	Start            time.Time
+	SkipHistoryClose bool
 }
 
 func Run(ctx context.Context, env *Env) error {
 	wl := env.Cfg.Workload
 	plans := workload.BuildPlans(wl)
 	chooser := workload.NewChooser(wl.Mix)
-	env.Start = time.Now()
+	if env.Start.IsZero() {
+		env.Start = time.Now()
+	}
 	end := env.Start.Add(env.Cfg.Scheduling.Duration)
 	clients := env.Cfg.Scheduling.Clients
 
@@ -377,7 +380,7 @@ func Run(ctx context.Context, env *Env) error {
 			runErr = err
 		}
 	}
-	if env.Hist != nil {
+	if env.Hist != nil && !env.SkipHistoryClose {
 		if err := env.Hist.Close(); err != nil {
 			if runErr == nil {
 				runErr = err
