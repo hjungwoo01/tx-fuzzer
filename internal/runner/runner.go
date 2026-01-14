@@ -136,6 +136,7 @@ func Run(ctx context.Context, env *Env) error {
 						}
 						invokeMops = append(invokeMops, history.Mop{Kind: elleMopKind, Key: elleKeyStr, Value: invokeVal})
 						okMops = append(okMops, history.Mop{Kind: elleMopKind, Key: elleKeyStr, Value: okVal})
+						elleIdx = len(okMops) - 1
 					}
 
 					invokeDetails := map[string]any{}
@@ -227,6 +228,7 @@ func Run(ctx context.Context, env *Env) error {
 						lastElleMono = opEndMono
 						lastElleWall = opEndWall
 						fmt.Printf("[warn] process %d txn %s step %d error: %v (sql=%s)\n", process, txnID, qi, execErr, qp.Template.SQL)
+						okDetails = addErrorDetails(okDetails, execErr)
 						recordQueryOp(env.Hist, history.Fail, process, txnID, stepIndex, qp.Template.SQL, args, okDetails, execErr.Error(), opEndMono, opEndWall)
 
 						if rollbackOnError {
@@ -239,6 +241,7 @@ func Run(ctx context.Context, env *Env) error {
 									"sql":  qp.Template.SQL,
 									"step": stepIndex,
 								}
+								finalEventMeta = addErrorDetails(finalEventMeta, execErr)
 							}
 							_ = tx.Rollback(tctx)
 							break
@@ -287,6 +290,7 @@ func Run(ctx context.Context, env *Env) error {
 							if commitStrategy != "" {
 								finalEventMeta = map[string]any{"strategy": commitStrategy}
 							}
+							finalEventMeta = addErrorDetails(finalEventMeta, err)
 							fmt.Printf("[warn] process %d txn %s commit error: %v\n", process, txnID, err)
 							_ = tx.Rollback(tctx)
 						} else {
@@ -307,6 +311,7 @@ func Run(ctx context.Context, env *Env) error {
 							finalEventF = ":rollback"
 							finalEventType = history.Fail
 							finalEventErr = err.Error()
+							finalEventMeta = addErrorDetails(finalEventMeta, err)
 						} else {
 							fail = true
 							rolledBack = true
@@ -352,13 +357,12 @@ func Run(ctx context.Context, env *Env) error {
 						lastElleWall = time.Now().UnixNano()
 					}
 					metaName := plan.Template.Name
-					if committed {
-						recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops, metaName, txnID)
-						recordTxnOp(env.Hist, history.Ok, process, lastElleMono, lastElleWall, okMops, metaName, txnID)
-					} else {
-						recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops, metaName, txnID)
-						recordTxnOp(env.Hist, history.Fail, process, lastElleMono, lastElleWall, okMops, metaName, txnID)
+					result := history.Fail
+					if committed && !fail {
+						result = history.Ok
 					}
+					recordTxnOp(env.Hist, history.Invoke, process, firstElleMono, firstElleWall, invokeMops, metaName, txnID)
+					recordTxnOp(env.Hist, result, process, lastElleMono, lastElleWall, okMops, metaName, txnID)
 				}
 
 				// Avoid tight loop when failures happen instantly.

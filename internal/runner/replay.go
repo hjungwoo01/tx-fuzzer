@@ -351,11 +351,14 @@ func (s *replayTxnState) runSingleStep(env *Env) error {
 
 	if execErr != nil {
 		errWrapped := fmt.Errorf("step %d failed: %w", s.stepIndex, execErr)
+		okDetails = addErrorDetails(okDetails, execErr)
 		recordQueryOp(env.Hist, history.Fail, s.process, s.txnID, stepIndex, st.SQL, args, okDetails, execErr.Error(), opEndMono, opEndWall)
-		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":rollback", map[string]any{
+		failMeta := map[string]any{
 			"sql":  st.SQL,
 			"step": stepIndex,
-		}, execErr.Error(), opEndMono, opEndWall)
+		}
+		failMeta = addErrorDetails(failMeta, execErr)
+		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":rollback", failMeta, execErr.Error(), opEndMono, opEndWall)
 		return s.fail(env, opEndMono, opEndWall, errWrapped)
 	}
 
@@ -423,7 +426,8 @@ func (s *replayTxnState) commit(env *Env) error {
 		s.rolledBack = true
 		s.lastMono = time.Since(env.Start).Nanoseconds()
 		s.lastWall = time.Now().UnixNano()
-		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":commit", nil, err.Error(), s.lastMono, s.lastWall)
+		failMeta := addErrorDetails(nil, err)
+		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":commit", failMeta, err.Error(), s.lastMono, s.lastWall)
 		s.emitHistory(env, history.Fail)
 		s.cancel()
 		s.tx = nil
@@ -463,7 +467,8 @@ func (s *replayTxnState) rollback(env *Env) error {
 		return nil
 	}
 	if err := s.tx.Rollback(s.ctx); err != nil {
-		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":rollback", nil, err.Error(), time.Since(env.Start).Nanoseconds(), time.Now().UnixNano())
+		failMeta := addErrorDetails(nil, err)
+		recordTxnBoundary(env.Hist, history.Fail, s.process, s.txnID, ":rollback", failMeta, err.Error(), time.Since(env.Start).Nanoseconds(), time.Now().UnixNano())
 		return err
 	}
 	s.rolledBack = true
