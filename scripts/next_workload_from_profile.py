@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-Generate a next-step workload by applying target_profile.json to a base YAML.
+Generate a next-step workload.
 
 Creates "hot" copies of retargetable transactions and adjusts mix weights so
 approximately target_weight of transactions hit the target key.
@@ -34,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         type=Path,
-        default=Path("target_profile.json"),
+        default=Path("bec1_target.json"),
         help="Path to target_profile.json.",
     )
     parser.add_argument(
