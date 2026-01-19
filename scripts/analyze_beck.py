@@ -239,7 +239,7 @@ def normalize_key(key: Any) -> Any:
     return key
 
 def main():
-    history_path = Path("history.edn")
+    history_path = Path("./history.edn")
     output_path = Path("beck_target.json")
 
     transactions = extract_transactions(load_history(history_path))
