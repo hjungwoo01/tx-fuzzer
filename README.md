@@ -271,4 +271,3 @@ All decisions and the resulting knobs (weights, clients, target keys) are logged
 - `scripts/feedback_fuzzer.py` – Iterative workload tuner that drives the run → analyze → mutate loop.
 - `scripts/adaptive_feedback.py` – Full feedback engine that archives each iteration, renders minimal near-miss graphs, and optionally re-runs the workload automatically.
 
-Use these building blocks to craft custom fuzzing campaigns or integrate the feedback loop into CI pipelines that guard against transactional anomalies.
