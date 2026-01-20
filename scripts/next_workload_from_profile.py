@@ -27,13 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base",
         type=Path,
-        default=Path("workloads/current.yaml"),
+        default=Path("workloads/next.yaml"),
         help="Base workload YAML to retarget.",
     )
     parser.add_argument(
         "--profile",
         type=Path,
-        default=Path("bec1_target.json"),
+        default=Path("beck_target.json"),
         help="Path to target_profile.json.",
     )
     parser.add_argument(
@@ -171,7 +171,7 @@ def retarget_query(query: Dict[str, Any], target_key: Any) -> bool:
             new_str = str(coerce_key(target_key, old_key))
             pattern = rf"(\bk\s*=\s*){re.escape(old_str)}\b"
             if re.search(pattern, sql):
-                query["sql"] = re.sub(pattern, rf"\1{new_str}", sql)
+                query["sql"] = re.sub(pattern, lambda m: f"{m.group(1)}{new_str}", sql)
     return True
 
 

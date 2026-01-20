@@ -1,0 +1,115 @@
+database:
+  kind: postgres
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+init_schema: true
+workload:
+  datatype: register
+  transactions:
+  - name: skew_a
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 1
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '1'
+  - name: skew_b
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '2'
+  - name: hot_skew_a
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 1
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '1'
+  - name: hot_skew_b
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 1
+      args: []
+      elle:
+        f: :read
+        key: '1'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 1
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '1'
+  mix:
+  - txn: hot_skew_a
+    weight: 0.45
+  - txn: hot_skew_b
+    weight: 0.45
+  - txn: skew_a
+    weight: 0.05
+  - txn: skew_b
+    weight: 0.05
+scheduling:
+  duration: 10s
+  clients: 2
+  barrier_every: 1
+  random_kill_pct: 0
+  jitter_ms_min: 0
+  jitter_ms_max: 0
