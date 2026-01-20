@@ -13,9 +13,6 @@ At a high level:
 4. (Optional) Use the BEC-1 helpers to generate a follow-up workload that
    targets the most interesting anomalies.
 
-The rest of this README focuses on what the tool is and how to use it
-end‑to‑end, without any adaptive/automatic feedback machinery.
-
 ---
 
 ### Requirements
