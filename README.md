@@ -112,38 +112,85 @@ pip install pyyaml edn_format networkx matplotlib
 
 ---
 
-### Using the BEC‑1 helpers
+### Automated BEC workflow
 
-Once you have a history and want to automatically propose a "next" workload
-that targets anomalies more directly, you can use the BEC‑1 analysis helpers.
+Once you have a workload that produces a history, you can let the tooling
+automatically:
 
-1. **Run the BEC‑1 analysis**
+- Run Elle at the correct isolation level (based on the workload YAML),
+- Run both `analyze_bec1.py` (BEC‑1) and `analyze_beck.py` (BEC‑k),
+- Pick the best BEC profile,
+- Generate the next workload in `workloads/next.yaml`.
 
-   From a virtual environment with the Python dependencies installed:
+This is wired through the `Makefile` and `scripts/analyze_and_next.py`.
 
-   ```bash
-   python scripts/analyze_bec1.py
-   ```
-
-   This produces a `bec1_target.json` file describing keys/transactions that
-   look interesting from the BEC‑1/BEC‑k heuristics.
-
-2. **Generate the next workload**
+1. **Seed the database once (if your workload expects it)**
 
    ```bash
-   python scripts/next_workload_from_profile.py
+   make init           # uses SEED (default: workloads/seed.yaml)
    ```
 
-   This reads `bec1_target.json` and writes a follow‑up workload to
-   `workloads/next.yaml`.
+2. **Run a workload and generate its history**
 
-3. **Run the new workload**
+   By default the Makefile uses `workloads/next.yaml`, but you can override it:
 
    ```bash
-   go run ./cmd/runner -config workloads/next.yaml -out history.edn
+   # Example: run the write_skew workload directly
+   make run WORKLOAD=workloads/write_skew.yaml OUT=history.edn
    ```
 
-You can then repeat the analysis/re‑run cycle as needed.
+3. **Run analysis + Elle + generate the next workload**
+
+   The `full` target runs the workload (step 2), then does the full BEC pipeline:
+
+   ```bash
+   # Run workload, check with Elle, analyze with BEC‑1/BEC‑k, write workloads/next.yaml
+   make full WORKLOAD=workloads/write_skew.yaml OUT=history.edn BASE=workloads/write_skew.yaml NEXT_OUT=workloads/next.yaml
+   ```
+
+   Under the hood:
+
+   - `WORKLOAD` is the YAML the runner executes.
+   - `OUT` is the Elle history file produced by the runner (e.g. `history.edn`).
+   - `BASE` is the workload YAML used as the template when generating the next workload.
+   - `NEXT_OUT` is where the next workload is written (by default `workloads/next.yaml`).
+
+4. **Iterate**
+
+   After `make full` has produced `workloads/next.yaml`, you can keep iterating:
+
+   ```bash
+   # Run the newly generated workload and produce a new history
+   make full WORKLOAD=workloads/next.yaml OUT=history.edn BASE=workloads/next.yaml NEXT_OUT=workloads/next.yaml
+   ```
+
+   Each iteration:
+
+   - Reads `WORKLOAD` to infer the isolation level and pick the Elle model,
+   - Checks `OUT` with Elle,
+   - Runs both BEC‑1 and BEC‑k analyzers on `OUT`,
+   - Chooses the best profile (prefers BEC‑1 when available),
+   - Regenerates `NEXT_OUT` with hot transactions targeting the suggested keys.
+
+5. **Advanced targets**
+
+   - **Run analysis + next workload only** (do not re‑run the workload):
+
+     ```bash
+     make analyze-next WORKLOAD=workloads/next.yaml HIST=history.edn BASE=workloads/next.yaml NEXT_OUT=workloads/next.yaml
+     ```
+
+     Use this when you already have `history.edn` and just want to re‑analyze or
+     regenerate the next workload.
+
+   - **Run analysis only** (no new workload generation):
+
+     ```bash
+     make analyze-only WORKLOAD=workloads/next.yaml HIST=history.edn
+     ```
+
+     This runs Elle + both BEC analyzers against `HIST` and leaves workloads
+     untouched.
 
 ---
 
