@@ -263,8 +263,26 @@ def main() -> None:
     args = parse_args()
     cfg = load_yaml(args.base)
     profile = load_profile(args.profile)
-    target_key = parse_target_key(profile.get("target_key"))
-    target_weight = parse_weight(profile.get("weight", 0.9))
+    
+    # Handle both BEC-1 format (target_key) and BEC-k format (targets array)
+    strategy = profile.get("strategy", "").lower()
+    target_key = None
+    target_weight = 0.9
+    
+    if strategy == "bec-k" or "targets" in profile:
+        # BEC-k format: use the first target
+        targets = profile.get("targets", [])
+        if targets and isinstance(targets, list) and len(targets) > 0:
+            first_target = targets[0]
+            if isinstance(first_target, dict):
+                target_key = parse_target_key(first_target.get("key"))
+                target_weight = parse_weight(first_target.get("weight", 0.6))
+            else:
+                target_key = parse_target_key(first_target)
+    else:
+        # BEC-1 format: single target_key
+        target_key = parse_target_key(profile.get("target_key"))
+        target_weight = parse_weight(profile.get("weight", 0.9))
 
     if target_key is None:
         save_yaml(cfg, args.out)

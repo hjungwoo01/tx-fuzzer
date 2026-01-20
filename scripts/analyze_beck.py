@@ -239,8 +239,31 @@ def normalize_key(key: Any) -> Any:
     return key
 
 def main():
-    history_path = Path("./history.edn")
-    output_path = Path("beck_target.json")
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="BEC-k analysis: Find the top K best RW edges for multi-key attack")
+    parser.add_argument(
+        "--history",
+        type=Path,
+        default=Path("./history.edn"),
+        help="Path to history EDN file (default: ./history.edn)",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("beck_target.json"),
+        help="Output JSON path (default: beck_target.json)",
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=3,
+        help="Number of top targets to select (default: 3)",
+    )
+    args = parser.parse_args()
+    
+    history_path = args.history
+    output_path = args.out
 
     transactions = extract_transactions(load_history(history_path))
     graph, candidates = build_graph_and_candidates(transactions)
@@ -248,7 +271,7 @@ def main():
     # Dedupe
     unique_candidates = { (c.reader, c.writer, c.key): c for c in candidates }.values()
 
-    targets = pick_top_k_beck(graph, unique_candidates, k=3)
+    targets = pick_top_k_beck(graph, unique_candidates, k=args.k)
     
     if targets:
         print(f"[BEC-k] Selected Top {len(targets)} Targets")

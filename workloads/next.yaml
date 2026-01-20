@@ -56,56 +56,156 @@ workload:
     timeout: 2s
     inter_query_delay_ms: 10
     steps:
-    - sql: SELECT v FROM kv WHERE k = 1
+    - sql: SELECT v FROM kv WHERE k = 2
       args: []
       elle:
         f: :read
-        key: '1'
+        key: '2'
         value_from_result_col: 0
-    - sql: SELECT v FROM kv WHERE k = 1
+    - sql: SELECT v FROM kv WHERE k = 2
       args: []
       elle:
         f: :read
-        key: '1'
+        key: '2'
         value_from_result_col: 0
-    - sql: UPDATE kv SET v = $1 WHERE k = 1
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
       args:
       - now_ns: {}
       elle:
         f: :write
-        key: '1'
+        key: '2'
   - name: hot_skew_b
     isolation: REPEATABLE READ
     timeout: 2s
     inter_query_delay_ms: 10
     steps:
-    - sql: SELECT v FROM kv WHERE k = 1
+    - sql: SELECT v FROM kv WHERE k = 2
       args: []
       elle:
         f: :read
-        key: '1'
+        key: '2'
         value_from_result_col: 0
-    - sql: SELECT v FROM kv WHERE k = 1
+    - sql: SELECT v FROM kv WHERE k = 2
       args: []
       elle:
         f: :read
-        key: '1'
+        key: '2'
         value_from_result_col: 0
-    - sql: UPDATE kv SET v = $1 WHERE k = 1
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
       args:
       - now_ns: {}
       elle:
         f: :write
-        key: '1'
+        key: '2'
+  - name: hot_skew_a_2
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '2'
+  - name: hot_skew_b_2
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '2'
+  - name: hot_hot_skew_a
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '2'
+  - name: hot_hot_skew_b
+    isolation: REPEATABLE READ
+    timeout: 2s
+    inter_query_delay_ms: 10
+    steps:
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: SELECT v FROM kv WHERE k = 2
+      args: []
+      elle:
+        f: :read
+        key: '2'
+        value_from_result_col: 0
+    - sql: UPDATE kv SET v = $1 WHERE k = 2
+      args:
+      - now_ns: {}
+      elle:
+        f: :write
+        key: '2'
   mix:
-  - txn: hot_skew_a
-    weight: 0.45
-  - txn: hot_skew_b
-    weight: 0.45
+  - txn: hot_skew_a_2
+    weight: 0.045
+  - txn: hot_skew_b_2
+    weight: 0.045
+  - txn: hot_hot_skew_a
+    weight: 0.405
+  - txn: hot_hot_skew_b
+    weight: 0.405
   - txn: skew_a
-    weight: 0.05
+    weight: 0.005
   - txn: skew_b
-    weight: 0.05
+    weight: 0.005
+  - txn: hot_skew_a
+    weight: 0.045
+  - txn: hot_skew_b
+    weight: 0.045
 scheduling:
   duration: 10s
   clients: 2

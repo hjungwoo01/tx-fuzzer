@@ -233,8 +233,25 @@ def normalize_key(key: Any) -> Any:
     return key
 
 def main():
-    history_path = Path("./history.edn")
-    output_path = Path("bec1_target.json")
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="BEC-1 analysis: Find the single best RW edge to force a cycle")
+    parser.add_argument(
+        "--history",
+        type=Path,
+        default=Path("./history.edn"),
+        help="Path to history EDN file (default: ./history.edn)",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("bec1_target.json"),
+        help="Output JSON path (default: bec1_target.json)",
+    )
+    args = parser.parse_args()
+    
+    history_path = args.history
+    output_path = args.out
 
     transactions = extract_transactions(load_history(history_path))
     graph, candidates = build_graph_and_candidates(transactions)
