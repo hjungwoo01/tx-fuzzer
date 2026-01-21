@@ -9,7 +9,7 @@ workload:
   transactions:
     # Transaction A: read both keys, write k1
     - name: skew_a
-      isolation: "REPEATABLE READ"
+      isolation: "READ COMMITTED"
       timeout: "2s"
       inter_query_delay_ms: 10
       steps:
@@ -26,7 +26,7 @@ workload:
 
     # Transaction B: read both keys, write k2
     - name: skew_b
-      isolation: "REPEATABLE READ"
+      isolation: "READ COMMITTED"
       timeout: "2s"
       inter_query_delay_ms: 10
       steps:
