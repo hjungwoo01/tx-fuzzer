@@ -7,6 +7,7 @@ Outputs: bec1_target.json
 from __future__ import annotations
 
 import json
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -204,28 +205,80 @@ def build_graph_and_candidates(
 def pick_best_bec1(graph: nx.DiGraph, candidates: Iterable[EdgeCandidate]) -> Optional[EdgeCandidate]:
     best_cand = None
     min_cycle_len = float('inf')
+    
     best_suspicion = None
+    min_suspicion_delta = float('inf')  # SMALLEST gap
 
-    for cand in candidates:
+    candidate_list = list(candidates)
+    total = len(candidate_list)
+    
+    if total == 0:
+        return None
+    
+    print(f"[BEC-1] Evaluating {total} candidate edges...", file=sys.stderr)
+    
+    # Limit candidates to 200
+    max_candidates = 200
+    if total > max_candidates:
+        print(f"[BEC-1] Optimization: Checking top {max_candidates} of {total} candidates to prevent timeout.", file=sys.stderr)
+        candidate_list = candidate_list[:max_candidates]
+    
+    use_precomputed = len(graph.nodes) < 1000
+    precomputed_paths = {}
+    
+    if use_precomputed:
+        print(f"[BEC-1] Precomputing shortest paths (graph has {len(graph.nodes)} nodes)...", file=sys.stderr)
+        try:
+            precomputed_paths = dict(nx.all_pairs_shortest_path_length(graph))
+            print(f"[BEC-1] Precomputation complete", file=sys.stderr)
+        except Exception as e:
+            print(f"[BEC-1] Precomputation failed, falling back to on-demand: {e}", file=sys.stderr)
+            use_precomputed = False
+    
+    for i, cand in enumerate(candidate_list):
         if cand.reader == cand.writer: continue
         
+        if len(candidate_list) > 100 and i % 50 == 0:
+            print(f"[BEC-1] Progress: {i}/{len(candidate_list)} candidates evaluated...", file=sys.stderr)
+        
         try:
-            # Check if Reader -> Writer closes a loop
-            path_len = nx.shortest_path_length(graph, cand.writer, cand.reader)
+            if use_precomputed:
+                writer_paths = precomputed_paths.get(cand.writer, {})
+                path_len = writer_paths.get(cand.reader, -1)
+                if path_len == -1:
+                    raise nx.NetworkXNoPath
+            else:
+                path_len = nx.shortest_path_length(graph, cand.writer, cand.reader)
+            
             cycle_len = path_len + 1
             if cycle_len < min_cycle_len:
                 min_cycle_len = cycle_len
                 best_cand = cand
+                if cycle_len <= 3: 
+                    print(f"[BEC-1] Found short cycle (len {min_cycle_len}), stopping early", file=sys.stderr)
+                    break
+
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            if best_suspicion is None: best_suspicion = cand
-            continue
+            try:
+                reader_idx = graph.nodes[cand.reader]['index']
+                writer_idx = graph.nodes[cand.writer]['index']
+                
+                delta = abs(writer_idx - reader_idx)
+                
+                if delta < min_suspicion_delta:
+                    min_suspicion_delta = delta
+                    best_suspicion = cand
+            except KeyError:
+                continue
 
     if best_cand:
         print(f"[BEC-1] Found Cycle (len {min_cycle_len}) on Key {best_cand.key}")
         return best_cand
+        
     if best_suspicion:
-        print(f"[BEC-1] No Cycle. Suspicion on Key {best_suspicion.key}")
+        print(f"[BEC-1] No Cycle. Suspicion on Key {best_suspicion.key} (Gap: {min_suspicion_delta} ops)")
         return best_suspicion
+        
     return None
 
 def normalize_key(key: Any) -> Any:
@@ -248,16 +301,42 @@ def main():
         default=Path("bec1_target.json"),
         help="Output JSON path (default: bec1_target.json)",
     )
+    parser.add_argument(
+        "--max-transactions",
+        type=int,
+        default=None,
+        help="Limit number of transactions to analyze (for large histories)",
+    )
     args = parser.parse_args()
     
     history_path = args.history
     output_path = args.out
 
+    print(f"[BEC-1] Loading history from {history_path}...", file=sys.stderr)
     transactions = extract_transactions(load_history(history_path))
+    original_count = len(transactions)
+    print(f"[BEC-1] Extracted {original_count} transactions", file=sys.stderr)
+    
+    # Limit transactions if specified or if too many
+    if args.max_transactions and len(transactions) > args.max_transactions:
+        print(f"[BEC-1] Limiting to {args.max_transactions} transactions (from {original_count})", file=sys.stderr)
+        transactions = transactions[:args.max_transactions]
+    elif len(transactions) > 5000:
+        # Auto-limit very large histories
+        limit = 5000
+        print(f"[BEC-1] Large history detected ({original_count} transactions), limiting to {limit} for performance", file=sys.stderr)
+        transactions = transactions[:limit]
+    
+    print(f"[BEC-1] Building dependency graph...", file=sys.stderr)
     graph, candidates = build_graph_and_candidates(transactions)
+    print(f"[BEC-1] Graph has {len(graph.nodes)} nodes, {len(graph.edges)} edges", file=sys.stderr)
+    print(f"[BEC-1] Found {len(candidates)} candidate edges", file=sys.stderr)
     
     # Dedupe candidates
     unique_candidates = { (c.reader, c.writer, c.key): c for c in candidates }.values()
+    unique_count = len(list(unique_candidates))
+    if unique_count < len(candidates):
+        print(f"[BEC-1] Deduplicated to {unique_count} unique candidates", file=sys.stderr)
     
     best = pick_best_bec1(graph, unique_candidates)
     

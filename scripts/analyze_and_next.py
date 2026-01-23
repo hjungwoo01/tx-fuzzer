@@ -29,6 +29,41 @@ def load_yaml(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(fh) or {}
 
 
+def extract_elle_model(workload_path: Path) -> str:
+    """Extract the Elle consistency model from a workload YAML file.
+    
+    Priority:
+    1. Top-level consistency_model field (if present)
+    2. Isolation level from transactions (mapped to Elle model)
+    3. Default to read-committed
+    """
+    cfg = load_yaml(workload_path)
+    
+    # Check for top-level consistency_model first
+    consistency_model = cfg.get("consistency_model")
+    if consistency_model:
+        model_str = str(consistency_model).strip().lower()
+        # Map common aliases
+        model_aliases = {
+            "serializable": "serializable",
+            "strict-serializable": "strict-serializable",
+            "snapshot-isolation": "snapshot-isolation",
+            "si": "snapshot-isolation",
+            "repeatable-read": "repeatable-read",
+            "rr": "repeatable-read",
+            "read-committed": "read-committed",
+            "rc": "read-committed",
+        }
+        if model_str in model_aliases:
+            return model_aliases[model_str]
+        # Return as-is if it looks valid
+        return model_str
+    
+    # Fall back to isolation level extraction
+    isolation = extract_isolation_level(workload_path)
+    return isolation_to_elle_model(isolation)
+
+
 def extract_isolation_level(workload_path: Path) -> Optional[str]:
     """Extract the isolation level from a workload YAML file."""
     cfg = load_yaml(workload_path)
@@ -203,11 +238,11 @@ def main() -> int:
         print(f"Error: Workload file not found: {args.workload}", file=sys.stderr)
         return 1
     
+    elle_model = extract_elle_model(args.workload)
     isolation = extract_isolation_level(args.workload)
-    elle_model = isolation_to_elle_model(isolation)
     
     print(f"Workload: {args.workload}")
-    print(f"Isolation level: {isolation or 'N/A (defaulting to read-committed)'}")
+    print(f"Isolation level: {isolation or 'N/A'}")
     print(f"Elle model: {elle_model}")
     
     # Step 2: Run Elle checker
