@@ -59,7 +59,9 @@ func main() {
 		if err := drv.InitSchema(ctx); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("schema initialized")
+		if os.Getenv("TXFUZZER_QUIET") == "" {
+			fmt.Println("schema initialized")
+		}
 		if *initSchema {
 			return
 		}
@@ -91,7 +93,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("run complete →", *outPath)
+	if os.Getenv("TXFUZZER_QUIET") == "" {
+		fmt.Println("run complete →", *outPath)
+	}
 
 	if *runElle {
 		fmt.Println("running Elle analysis…")
@@ -145,5 +149,7 @@ func testDBConnection(dsn string) {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
 
-	log.Println("Database connection successful!")
+	if os.Getenv("TXFUZZER_QUIET") == "" {
+		log.Println("Database connection successful!")
+	}
 }

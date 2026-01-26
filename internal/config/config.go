@@ -63,6 +63,7 @@ type Workload struct {
 type Scheduling struct {
 	Clients              int           `yaml:"clients"`
 	Duration             time.Duration `yaml:"duration"`
+	Limit                int           `yaml:"limit,omitempty"` // Stop after this many transactions (across all clients)
 	Ramp                 time.Duration `yaml:"ramp,omitempty"`
 	MaxInflightPerClient int           `yaml:"max_inflight_per_client,omitempty"`
 	BarrierEvery         int           `yaml:"barrier_every,omitempty"`

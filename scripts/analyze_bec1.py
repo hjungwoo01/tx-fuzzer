@@ -217,13 +217,16 @@ def pick_best_bec1(graph: nx.DiGraph, candidates: Iterable[EdgeCandidate]) -> Op
     
     print(f"[BEC-1] Evaluating {total} candidate edges...", file=sys.stderr)
     
-    # Limit candidates to 200
-    max_candidates = 200
+    if len(graph.nodes) <= 1000:
+        max_candidates = 200
+    else:
+        max_candidates = 50
     if total > max_candidates:
         print(f"[BEC-1] Optimization: Checking top {max_candidates} of {total} candidates to prevent timeout.", file=sys.stderr)
         candidate_list = candidate_list[:max_candidates]
     
-    use_precomputed = len(graph.nodes) < 1000
+
+    use_precomputed = len(graph.nodes) <= 1000
     precomputed_paths = {}
     
     if use_precomputed:

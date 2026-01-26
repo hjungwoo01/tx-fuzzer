@@ -61,7 +61,9 @@ func New(path string) (*Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("[diag] opening history file at %s\n", path)
+	if os.Getenv("TXFUZZER_QUIET") == "" {
+		fmt.Printf("[diag] opening history file at %s\n", path)
+	}
 	return &Writer{
 		w:     bufio.NewWriterSize(f, 1<<20),
 		f:     f,

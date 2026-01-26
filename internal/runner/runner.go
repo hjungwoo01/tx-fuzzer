@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hjungwoo01/tx-fuzzer/internal/config"
@@ -28,27 +30,47 @@ func Run(ctx context.Context, env *Env) error {
 	if env.Start.IsZero() {
 		env.Start = time.Now()
 	}
-	end := env.Start.Add(env.Cfg.Scheduling.Duration)
 	clients := env.Cfg.Scheduling.Clients
+	limit := env.Cfg.Scheduling.Limit
+	var txCount atomic.Int64
+	
+	var duration time.Duration
+	if limit > 0 {
+		duration = 24 * time.Hour
+	} else {
+		duration = env.Cfg.Scheduling.Duration
+	}
+	end := env.Start.Add(duration)
 
 	errCh := make(chan error, clients)
 	barrierEvery := env.Cfg.Scheduling.BarrierEvery
 	bar := NewCyclicBarrier(env.Cfg.Scheduling.Clients)
 
-	if env.Hist == nil {
-		fmt.Printf("[diag] env.Hist is nil -- history writer not initialized!\n")
-	} else {
-		fmt.Printf("[diag] env.Hist is ready (ok)\n")
+	if os.Getenv("TXFUZZER_QUIET") == "" {
+		if env.Hist == nil {
+			fmt.Printf("[diag] env.Hist is nil -- history writer not initialized!\n")
+		} else {
+			fmt.Printf("[diag] env.Hist is ready (ok)\n")
+		}
+		fmt.Printf("[diag] clients=%d, duration=%s\n", clients, env.Cfg.Scheduling.Duration)
 	}
-	fmt.Printf("[diag] clients=%d, duration=%s\n", clients, env.Cfg.Scheduling.Duration)
 
 	for pid := 0; pid < clients; pid++ {
 		go func(process int) {
-			fmt.Printf("[diag] starting client %d\n", process)
+			if os.Getenv("TXFUZZER_QUIET") == "" {
+				fmt.Printf("[diag] starting client %d\n", process)
+			}
 			defer func() { errCh <- nil }()
 
 			iter := 0
-			for time.Now().Before(end) {
+			for {
+				if limit > 0 && txCount.Load() >= int64(limit) {
+					break
+				}
+				
+				if !time.Now().Before(end) {
+					break
+				}
 				iter++
 				name := chooser.Pick()
 				plan := plans[name]
@@ -67,6 +89,14 @@ func Run(ctx context.Context, env *Env) error {
 					continue
 				}
 
+				if limit > 0 {
+					newCount := txCount.Add(1)
+					if newCount > int64(limit) {
+						_ = tx.Rollback(tctx)
+						cancel()
+						break
+					}
+				}
 				txnID := history.NextTxnID()
 				rollbackOnError := true
 				if plan.Template.RollbackOnError != nil {
@@ -227,7 +257,9 @@ func Run(ctx context.Context, env *Env) error {
 						queryFailed = true
 						lastElleMono = opEndMono
 						lastElleWall = opEndWall
-						fmt.Printf("[warn] process %d txn %s step %d error: %v (sql=%s)\n", process, txnID, qi, execErr, qp.Template.SQL)
+						if os.Getenv("TXFUZZER_QUIET") == "" {
+							fmt.Printf("[warn] process %d txn %s step %d error: %v (sql=%s)\n", process, txnID, qi, execErr, qp.Template.SQL)
+						}
 						okDetails = addErrorDetails(okDetails, execErr)
 						recordQueryOp(env.Hist, history.Fail, process, txnID, stepIndex, qp.Template.SQL, args, okDetails, execErr.Error(), opEndMono, opEndWall)
 
@@ -291,7 +323,9 @@ func Run(ctx context.Context, env *Env) error {
 								finalEventMeta = map[string]any{"strategy": commitStrategy}
 							}
 							finalEventMeta = addErrorDetails(finalEventMeta, err)
-							fmt.Printf("[warn] process %d txn %s commit error: %v\n", process, txnID, err)
+							if os.Getenv("TXFUZZER_QUIET") == "" {
+								fmt.Printf("[warn] process %d txn %s commit error: %v\n", process, txnID, err)
+							}
 							_ = tx.Rollback(tctx)
 						} else {
 							committed = true
@@ -365,7 +399,6 @@ func Run(ctx context.Context, env *Env) error {
 					recordTxnOp(env.Hist, result, process, lastElleMono, lastElleWall, okMops, metaName, txnID)
 				}
 
-				// Avoid tight loop when failures happen instantly.
 				if queryFailed && env.Cfg.Scheduling.JitterMaxMs > 0 {
 					delay := time.Duration(env.Cfg.Scheduling.JitterMinMs) * time.Millisecond
 					if env.Cfg.Scheduling.JitterMaxMs > env.Cfg.Scheduling.JitterMinMs {
@@ -388,7 +421,7 @@ func Run(ctx context.Context, env *Env) error {
 		if err := env.Hist.Close(); err != nil {
 			if runErr == nil {
 				runErr = err
-			} else {
+			} else if os.Getenv("TXFUZZER_QUIET") == "" {
 				fmt.Printf("history close error: %v\n", err)
 			}
 		}
@@ -530,7 +563,9 @@ func recordTxnOp(hw *history.Writer, opType history.OpType, process int, timeNS,
 		meta["txn_id"] = txnID
 	}
 	if err := hw.WriteTxn(opType, process, timeNS, wallNS, mops, meta); err != nil {
-		fmt.Printf("history txn write error: %v\n", err)
+		if os.Getenv("TXFUZZER_QUIET") == "" {
+			fmt.Printf("history txn write error: %v\n", err)
+		}
 	}
 }
 
@@ -565,7 +600,9 @@ func writeHistoryOp(hw *history.Writer, op history.Op) {
 		op.Value = map[string]any{}
 	}
 	if err := hw.Write(op); err != nil {
-		fmt.Printf("history op write error: %v\n", err)
+		if os.Getenv("TXFUZZER_QUIET") == "" {
+			fmt.Printf("history op write error: %v\n", err)
+		}
 	}
 }
 

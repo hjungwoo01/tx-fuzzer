@@ -1,0 +1,68 @@
+database:
+  kind: postgres
+  dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+init_schema: true
+consistency_model: serializable
+workload:
+  datatype: register
+  transactions:
+  - name: safe_read
+    isolation: READ COMMITTED
+    timeout: 2s
+    steps:
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - rand_int:
+          min: 1
+          max: 25000
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+  - name: safe_write
+    isolation: READ COMMITTED
+    timeout: 2s
+    steps:
+    - sql: UPDATE kv SET v = $1 WHERE k = $2
+      args:
+      - now_ns: {}
+      - rand_int:
+          min: 1
+          max: 25000
+      elle:
+        f: :write
+        key: $2
+  - name: risky_tx
+    isolation: READ COMMITTED
+    timeout: 2s
+    steps:
+    - sql: SELECT v FROM kv WHERE k = $1
+      args:
+      - rand_int:
+          min: 1
+          max: 25000
+      elle:
+        f: :read
+        key: $1
+        value_from_result_col: 0
+    - sleep: 10ms
+    - sql: UPDATE kv SET v = 999 WHERE k = $1
+      args:
+      - $1
+      elle:
+        f: :write
+        key: $1
+  mix:
+  - txn: safe_read
+    weight: 0.475
+  - txn: safe_write
+    weight: 0.475
+  - txn: risky_tx
+    weight: 0.05
+scheduling:
+  duration: 10s
+  clients: 4
+  barrier_every: 0
+  random_kill_pct: 0
+  jitter_ms_min: 0
+  jitter_ms_max: 0

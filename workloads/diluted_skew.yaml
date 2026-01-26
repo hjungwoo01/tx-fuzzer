@@ -3,15 +3,11 @@ database:
   dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
 init_schema: true
-
-# CRITICAL: This tells the Go Runner (and Elle) to flag ANY cycle as a failure,
-# even if the DB is running in READ COMMITTED.
 consistency_model: serializable
 
 workload:
   datatype: register
   transactions:
-    # Safe read transaction: reads a single key
     - name: safe_read
       isolation: "READ COMMITTED"
       timeout: "2s"
@@ -21,7 +17,6 @@ workload:
             - choice: {from: [1, 10000]}
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
 
-    # Safe write transaction: writes a single key
     - name: safe_write
       isolation: "READ COMMITTED"
       timeout: "2s"
@@ -32,11 +27,6 @@ workload:
             - choice: {from: [1, 10000]}
           elle: {f: ":write", key: "$2"}
 
-    # Risky skew transaction A: Read-Only Pivot strategy
-    # Step 1: Read $1 (The Pivot) - this will be retargeted to create shared dependency
-    # Step 2: Read $2 (Random Noise) - remains random to avoid lock contention
-    # Step 3: Delay 50ms - widen the race window so transactions can interleave
-    # Step 4: Write to $2 (Random Noise) - write to random key, not pivot, to allow race condition
     - name: skew_a
       isolation: "READ COMMITTED"
       timeout: "2s"
@@ -50,17 +40,12 @@ workload:
           args:
             - choice: {from: [1, 10000]}
           elle: {f: ":read", key: "$2", value_from_result_col: 0}
-        - sleep: "50ms"  # Delay to widen race window - wait for other transaction to enter trap
+        - sleep: "50ms"
         - sql: "UPDATE kv SET v = $3 WHERE k = $2"
           args:
             - now_ns: {}
           elle: {f: ":write", key: "$2"}
 
-    # Risky skew transaction B: Read-Only Pivot strategy
-    # Step 1: Read $1 (The Pivot) - this will be retargeted to create shared dependency
-    # Step 2: Read $2 (Random Noise) - remains random to avoid lock contention
-    # Step 3: Delay 50ms - widen the race window so transactions can interleave
-    # Step 4: Write to $2 (Random Noise) - write to random key, not pivot, to allow race condition
     - name: skew_b
       isolation: "READ COMMITTED"
       timeout: "2s"
@@ -74,7 +59,7 @@ workload:
           args:
             - choice: {from: [1, 10000]}
           elle: {f: ":read", key: "$2", value_from_result_col: 0}
-        - sleep: "50ms"  # Delay to widen race window - wait for other transaction to enter trap
+        - sleep: "50ms"
         - sql: "UPDATE kv SET v = $3 WHERE k = $2"
           args:
             - now_ns: {}
@@ -91,7 +76,7 @@ workload:
       weight: 0.05
 
 scheduling:
-  duration: "5s"  # Reduced to minimize history size - we only need a few thousand ops to find near misses
+  duration: "5s"
   clients: 4
   barrier_every: 0
   random_kill_pct: 0
