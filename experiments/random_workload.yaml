@@ -14,7 +14,7 @@ workload:
       args:
       - rand_int:
           min: 1
-          max: 25000
+          max: 50000
       elle:
         f: :read
         key: $1
@@ -28,7 +28,7 @@ workload:
       - now_ns: {}
       - rand_int:
           min: 1
-          max: 25000
+          max: 50000
       elle:
         f: :write
         key: $2
@@ -40,7 +40,7 @@ workload:
       args:
       - rand_int:
           min: 1
-          max: 25000
+          max: 50000
       elle:
         f: :read
         key: $1

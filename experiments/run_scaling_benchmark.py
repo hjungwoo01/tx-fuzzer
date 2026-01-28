@@ -32,6 +32,7 @@ BEC1_TIMEOUT_S = 300
 BEC1_ANALYZE_TIMEOUT_S = 180 
 TEMPLATE_PATH = REPO_ROOT / "workloads" / "templates" / "blind_write.yaml"
 RETARGET_SCRIPT = REPO_ROOT / "scripts" / "next_workload_from_profile.py"
+GENERATE_REPLAY_SCRIPT = REPO_ROOT / "scripts" / "generate_replay.py"
 ANALYZE_SCRIPT = REPO_ROOT / "scripts" / "analyze_bec1.py"
 OUTPUT_PNG = Path(__file__).resolve().parent / "benchmark_results.png"
 
@@ -136,26 +137,22 @@ def save_yaml(data: Dict[str, Any], p: Path) -> None:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
 
 
+# Max transactions in BEC-1 exploration (hard cap so analysis stays fast).
+EXPLORATION_TXN_LIMIT = 20000
+
+
 def generate_diluted(workload_path: Path, key_count: int, use_limit: bool = False) -> None:
     """Generate workload YAML with keyspace [1, key_count] from template.
-    If use_limit=True, uses limit based on key_count (for BEC-1 exploration).
-    For larger key spaces, we need more transactions to find overlapping keys.
-    If use_limit=False, uses duration=30s (for Random testing - should run until timeout/bug)."""
+    If use_limit=True, uses a strict transaction limit for BEC-1 exploration so the
+    scout phase produces ~2k txns and analysis stays under ~1s.
+    If use_limit=False, uses duration=30s (for Random testing - run until timeout/bug)."""
     cfg = load_yaml(TEMPLATE_PATH)
     _set_keyspace(cfg, key_count)
     sched = cfg.setdefault("scheduling", {})
     
     if use_limit:
-        if key_count <= 1000:
-            duration = "3s"
-        elif key_count <= 5000:
-            duration = "5s"
-        elif key_count <= 10000:
-            duration = "8s"
-        else:
-            duration = "10s"
-        sched.pop("limit", None)
-        sched["duration"] = duration
+        sched["limit"] = EXPLORATION_TXN_LIMIT
+        sched["duration"] = "30s"  # Fallback; runner stops at limit first when limit > 0
     else:
         sched.pop("limit", None)
         sched["duration"] = "30s"
@@ -277,49 +274,97 @@ def run_bec1(
         print(f"[BEC-1] Analysis failed (exit: {r.returncode}, profile exists: {profile_path.exists()}, total: {elapsed():.1f}s)", file=sys.stderr)
         return (None, timed_out)
 
-    if over():
-        print(f"[BEC-1] Timeout before retarget (elapsed: {elapsed():.1f}s)", file=sys.stderr)
-        return (None, timed_out)
-    cmd = [
-        sys.executable, str(RETARGET_SCRIPT),
-        "--base", str(workload_path),
-        "--profile", str(profile_path),
-        "--out", str(next_attack_path),
-    ]
-    r = subprocess.run(cmd, cwd=str(REPO_ROOT), stdout=_DEVNULL, stderr=_DEVNULL)
-    if r.returncode != 0 or not next_attack_path.exists():
-        print(f"[BEC-1] Retarget failed (exit: {r.returncode}, total: {elapsed():.1f}s)", file=sys.stderr)
-        return (None, timed_out)
-    
     try:
         with profile_path.open() as f:
             profile_data = json.load(f)
         target_key = profile_data.get("target_key")
-        if target_key is None:
-            print(f"[BEC-1] No target key in profile (0 candidates found), skipping attack", file=sys.stderr)
-            return (None, timed_out)
+        strategy = (profile_data.get("strategy") or "").strip().lower()
     except Exception as e:
-        print(f"[BEC-1] Failed to check profile: {e}", file=sys.stderr)
+        print(f"[BEC-1] Failed to load profile: {e}", file=sys.stderr)
         return (None, timed_out)
-    
-    attack_cfg = load_yaml(next_attack_path)
-    attack_sched = attack_cfg.setdefault("scheduling", {})
-    attack_sched.pop("limit", None)
-    attack_sched["duration"] = "10s"
-    if "clients" not in attack_sched:
-        attack_sched["clients"] = 4
-    save_yaml(attack_cfg, next_attack_path)
+    if target_key is None:
+        print(f"[BEC-1] No target key in profile (0 candidates found), skipping attack", file=sys.stderr)
+        return (None, timed_out)
+
+    if strategy == "interleave":
+        # Deterministic replay: generate replay YAML; runner uses replay mode when config has replay.enabled: true
+        if over():
+            print(f"[BEC-1] Timeout before replay config (elapsed: {elapsed():.1f}s)", file=sys.stderr)
+            return (None, timed_out)
+        cmd = [
+            sys.executable, str(GENERATE_REPLAY_SCRIPT),
+            "--base", str(workload_path),
+            "--profile", str(profile_path),
+            "--out", str(next_attack_path),
+        ]
+        r = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"[BEC-1] Generate replay failed (exit: {r.returncode}, total: {elapsed():.1f}s)", file=sys.stderr)
+            if r.stderr:
+                print(r.stderr, file=sys.stderr)
+            return (None, timed_out)
+        if not next_attack_path.exists():
+            # Replay not applicable (e.g. reader/writer are read-only or write-only) → fall back to key-flood
+            if over():
+                print(f"[BEC-1] Timeout before retarget fallback (elapsed: {elapsed():.1f}s)", file=sys.stderr)
+                return (None, timed_out)
+            if r.stderr:
+                print(r.stderr.strip(), file=sys.stderr)
+            cmd = [
+                sys.executable, str(RETARGET_SCRIPT),
+                "--base", str(workload_path),
+                "--profile", str(profile_path),
+                "--out", str(next_attack_path),
+            ]
+            r2 = subprocess.run(cmd, cwd=str(REPO_ROOT), stdout=_DEVNULL, stderr=_DEVNULL)
+            if r2.returncode != 0 or not next_attack_path.exists():
+                print(f"[BEC-1] Retarget fallback failed (exit: {r2.returncode}, total: {elapsed():.1f}s)", file=sys.stderr)
+                return (None, timed_out)
+            attack_cfg = load_yaml(next_attack_path)
+            attack_sched = attack_cfg.setdefault("scheduling", {})
+            attack_sched.pop("limit", None)
+            attack_sched["duration"] = "10s"
+            if "clients" not in attack_sched:
+                attack_sched["clients"] = 4
+            save_yaml(attack_cfg, next_attack_path)
+    else:
+        # Legacy key fuzzing: weighted mix retarget and run Go in normal mode
+        if over():
+            print(f"[BEC-1] Timeout before retarget (elapsed: {elapsed():.1f}s)", file=sys.stderr)
+            return (None, timed_out)
+        cmd = [
+            sys.executable, str(RETARGET_SCRIPT),
+            "--base", str(workload_path),
+            "--profile", str(profile_path),
+            "--out", str(next_attack_path),
+        ]
+        r = subprocess.run(cmd, cwd=str(REPO_ROOT), stdout=_DEVNULL, stderr=_DEVNULL)
+        if r.returncode != 0 or not next_attack_path.exists():
+            print(f"[BEC-1] Retarget failed (exit: {r.returncode}, total: {elapsed():.1f}s)", file=sys.stderr)
+            return (None, timed_out)
+        attack_cfg = load_yaml(next_attack_path)
+        attack_sched = attack_cfg.setdefault("scheduling", {})
+        attack_sched.pop("limit", None)
+        attack_sched["duration"] = "10s"
+        if "clients" not in attack_sched:
+            attack_sched["clients"] = 4
+        save_yaml(attack_cfg, next_attack_path)
 
     if over():
         print(f"[BEC-1] Timeout before attack (elapsed: {elapsed():.1f}s)", file=sys.stderr)
         return (None, timed_out)
-    attack_start = time.time()
+    t_attack_start = time.time()
     if not run_workload(next_attack_path, attack_history_path):
         print(f"[BEC-1] Attack workload failed (total: {elapsed():.1f}s)", file=sys.stderr)
         return (None, timed_out)
-    attack_time = time.time() - attack_start
-    print(f"[BEC-1] Attack complete in {attack_time:.1f}s (total: {elapsed():.1f}s)", file=sys.stderr)
+    t_attack = time.time() - t_attack_start
+    t_validate_start = time.time()
     valid, exit_code = check_validity(attack_history_path, elle_model)
+    t_validate = time.time() - t_validate_start
+    print(
+        f"[BEC-1] Attack (runner): {t_attack:.2f}s | Validation (Elle): {t_validate:.2f}s (total: {elapsed():.1f}s)",
+        file=sys.stderr,
+    )
     if valid:
         print(f"[BEC-1] Attack found no bug (exit: {exit_code}, total: {elapsed():.1f}s)", file=sys.stderr)
         return (None, timed_out)
@@ -393,8 +438,6 @@ def main() -> int:
         b_errs.append(bs)
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.set_xscale("log")
-    
     r_lower = [min(err, val) if not math.isnan(val) else 0 for val, err in zip(r_vals, r_errs)]
     r_upper = r_errs
     b_lower = [min(err, val) if not math.isnan(val) else 0 for val, err in zip(b_vals, b_errs)]
@@ -408,7 +451,7 @@ def main() -> int:
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
     ax.set_xticks(key_counts)
-    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
     fig.tight_layout()
     fig.savefig(OUTPUT_PNG, dpi=150)
     plt.close(fig)

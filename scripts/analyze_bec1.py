@@ -37,6 +37,7 @@ class Transaction:
     txn_id: str
     ops: List[Operation]
     index: int
+    txn_name: Optional[str] = None 
 
 @dataclass(frozen=True)
 class ReadRecord:
@@ -146,9 +147,49 @@ def extract_transactions(events: Sequence[Mapping[str, Any]]) -> List[Transactio
         meta = event.get("meta") if isinstance(event.get("meta"), Mapping) else {}
         raw_txn_id = event.get("txn") or event.get("txn_id") or meta.get("txn_id")
         txn_id = str(raw_txn_id) if raw_txn_id is not None else f"txn_{counter + 1}"
+        
+        txn_name = meta.get("txn_name") or meta.get("txn-name")
+        if txn_name is not None:
+            txn_name = str(txn_name)
         counter += 1
-        transactions.append(Transaction(txn_id=txn_id, ops=ops, index=len(transactions)))
+        transactions.append(Transaction(txn_id=txn_id, ops=ops, index=len(transactions), txn_name=txn_name))
     return transactions
+
+
+def prune_history(transactions):
+    """
+    Optimization: Discard transactions that ONLY touch keys 
+    which never appear again in the entire history.
+    """
+    key_counts = {}
+    
+    # Pass 1: Count key usage across all operations in all transactions
+    for txn in transactions:
+        # Check if the transaction has an 'ops' attribute (standard Jepsen model)
+        if hasattr(txn, "ops"):
+            for op in txn.ops:
+                # Ensure op has a key and it's not None
+                if hasattr(op, "key") and op.key is not None:
+                    key_counts[op.key] = key_counts.get(op.key, 0) + 1
+                    
+    # Pass 2: Keep transactions that touch at least one "active" key
+    relevant_txns = []
+    for txn in transactions:
+        is_relevant = False
+        
+        # If any operation in this transaction touches a popular key, keep the txn
+        if hasattr(txn, "ops"):
+            for op in txn.ops:
+                if hasattr(op, "key") and op.key is not None:
+                    if key_counts.get(op.key, 0) > 1:
+                        is_relevant = True
+                        break
+        
+        if is_relevant:
+            relevant_txns.append(txn)
+            
+    print(f"[BEC-1] Pruning: Reduced {len(transactions)} -> {len(relevant_txns)} transactions (removed single-touch keys)")
+    return relevant_txns
 
 def build_graph_and_candidates(
     transactions: Sequence[Transaction]) -> Tuple[nx.DiGraph, List[EdgeCandidate]]:
@@ -317,6 +358,7 @@ def main():
 
     print(f"[BEC-1] Loading history from {history_path}...", file=sys.stderr)
     transactions = extract_transactions(load_history(history_path))
+    transactions = prune_history(transactions)
     original_count = len(transactions)
     print(f"[BEC-1] Extracted {original_count} transactions", file=sys.stderr)
     
@@ -324,9 +366,9 @@ def main():
     if args.max_transactions and len(transactions) > args.max_transactions:
         print(f"[BEC-1] Limiting to {args.max_transactions} transactions (from {original_count})", file=sys.stderr)
         transactions = transactions[:args.max_transactions]
-    elif len(transactions) > 5000:
+    elif len(transactions) > 20000:
         # Auto-limit very large histories
-        limit = 5000
+        limit = 20000
         print(f"[BEC-1] Large history detected ({original_count} transactions), limiting to {limit} for performance", file=sys.stderr)
         transactions = transactions[:limit]
     
@@ -344,11 +386,25 @@ def main():
     best = pick_best_bec1(graph, unique_candidates)
     
     if best:
+        # Map txn_id -> workload template name for reader/writer
+        txn_id_to_name: Dict[str, str] = {}
+        for t in transactions:
+            if t.txn_name:
+                txn_id_to_name[t.txn_id] = t.txn_name
+        p1_name = txn_id_to_name.get(best.reader) or best.reader
+        p2_name = txn_id_to_name.get(best.writer) or best.writer
         payload = {
             "target_key": normalize_key(best.key),
-            "strategy": "bec-1",
-            "weight": 0.9
+            "p1_name": p1_name,
+            "p2_name": p2_name,
+            "strategy": "interleave",
         }
+        if not txn_id_to_name.get(best.reader) or not txn_id_to_name.get(best.writer):
+            print(
+                "[BEC-1] WARNING: History missing txn_name in meta for some actors; using txn_id. "
+                "Ensure runner records :meta {:txn_name \"...\"}.",
+                file=sys.stderr,
+            )
     else:
         payload = {}
 
