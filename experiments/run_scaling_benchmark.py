@@ -137,7 +137,6 @@ def save_yaml(data: Dict[str, Any], p: Path) -> None:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
 
 
-# Max transactions in BEC-1 exploration (hard cap so analysis stays fast).
 EXPLORATION_TXN_LIMIT = 20000
 
 
@@ -152,7 +151,8 @@ def generate_diluted(workload_path: Path, key_count: int, use_limit: bool = Fals
     
     if use_limit:
         sched["limit"] = EXPLORATION_TXN_LIMIT
-        sched["duration"] = "30s"  # Fallback; runner stops at limit first when limit > 0
+        sched["duration"] = "30s"
+        
     else:
         sched.pop("limit", None)
         sched["duration"] = "30s"
