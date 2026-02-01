@@ -1,46 +1,16 @@
 database:
   kind: postgres
   dsn: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
-init_schema: true
-consistency_model: serializable
 workload:
   datatype: register
   transactions:
-  - name: safe_read
+  - name: p1_fixed
     isolation: READ COMMITTED
     timeout: 2s
     steps:
     - sql: SELECT v FROM kv WHERE k = $1
       args:
-      - rand_int:
-          min: 1
-          max: 5000
-      elle:
-        f: :read
-        key: $1
-        value_from_result_col: 0
-  - name: safe_write
-    isolation: READ COMMITTED
-    timeout: 2s
-    steps:
-    - sql: UPDATE kv SET v = $1 WHERE k = $2
-      args:
-      - now_ns: {}
-      - rand_int:
-          min: 1
-          max: 5000
-      elle:
-        f: :write
-        key: $2
-  - name: risky_tx
-    isolation: READ COMMITTED
-    timeout: 2s
-    steps:
-    - sql: SELECT v FROM kv WHERE k = $1
-      args:
-      - rand_int:
-          min: 1
-          max: 5000
+      - 432
       elle:
         f: :read
         key: $1
@@ -48,41 +18,17 @@ workload:
     - sleep: 10ms
     - sql: UPDATE kv SET v = 999 WHERE k = $1
       args:
-      - $1
+      - 432
       elle:
         f: :write
         key: $1
-  - name: hot_safe_read
+  - name: p2_fixed
     isolation: READ COMMITTED
     timeout: 2s
     steps:
     - sql: SELECT v FROM kv WHERE k = $1
       args:
-      - 7
-      elle:
-        f: :read
-        key: $1
-        value_from_result_col: 0
-  - name: hot_safe_write
-    isolation: READ COMMITTED
-    timeout: 2s
-    steps:
-    - sql: UPDATE kv SET v = $1 WHERE k = $2
-      args:
-      - now_ns: {}
-      - rand_int:
-          min: 1
-          max: 5000
-      elle:
-        f: :write
-        key: $2
-  - name: hot_risky_tx
-    isolation: READ COMMITTED
-    timeout: 2s
-    steps:
-    - sql: SELECT v FROM kv WHERE k = $1
-      args:
-      - 7
+      - 432
       elle:
         f: :read
         key: $1
@@ -90,27 +36,36 @@ workload:
     - sleep: 10ms
     - sql: UPDATE kv SET v = 999 WHERE k = $1
       args:
-      - '7'
+      - 432
       elle:
         f: :write
         key: $1
-  mix:
-  - txn: hot_safe_read
-    weight: 0.4275
-  - txn: hot_safe_write
-    weight: 0.4275
-  - txn: hot_risky_tx
-    weight: 0.045
-  - txn: safe_read
-    weight: 0.0475
-  - txn: safe_write
-    weight: 0.0475
-  - txn: risky_tx
-    weight: 0.005
 scheduling:
-  duration: 10s
-  clients: 4
-  barrier_every: 0
-  random_kill_pct: 0
-  jitter_ms_min: 0
-  jitter_ms_max: 0
+  duration: 1s
+  clients: 2
+replay:
+  enabled: true
+  transactions:
+  - alias: P1
+    txn: p1_fixed
+    process: 0
+  - alias: P2
+    txn: p2_fixed
+    process: 1
+  schedule:
+  - alias: P1
+    action: step
+    steps: 1
+  - alias: P2
+    action: step
+    steps: 1
+  - alias: P2
+    action: step
+    steps: 2
+  - alias: P1
+    action: step
+    steps: 2
+  - alias: P1
+    action: commit
+  - alias: P2
+    action: commit
