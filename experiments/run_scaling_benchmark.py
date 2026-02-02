@@ -146,13 +146,26 @@ def save_yaml(data: Dict[str, Any], p: Path) -> None:
 EXPLORATION_TXN_LIMIT = 20000
 
 
-def generate_diluted(workload_path: Path, key_count: int, use_limit: bool = False) -> None:
+def generate_diluted(
+    workload_path: Path,
+    key_count: int,
+    use_limit: bool = False,
+    isolation_level: Optional[str] = None,
+) -> None:
     """Generate workload YAML with keyspace [1, key_count] from template.
     If use_limit=True, uses a strict transaction limit for BEC-1 exploration so the
     scout phase produces ~2k txns and analysis stays under ~1s.
     If use_limit=False, uses duration=30s (for Random testing - run until timeout/bug)."""
     cfg = load_yaml(TEMPLATE_PATH)
     _set_keyspace(cfg, key_count)
+
+    if isolation_level:
+        workload = cfg.get("workload") or {}
+        txns = workload.get("transactions") or []
+        for txn in txns:
+            if isinstance(txn, dict):
+                txn["isolation"] = isolation_level
+
     sched = cfg.setdefault("scheduling", {})
     
     if use_limit:
@@ -415,77 +428,163 @@ def main() -> int:
     attack_history_path = work_dir / "attack_history.edn"
     history_path = work_dir / "history.edn"
 
-    results: Dict[str, Dict[int, Tuple[Optional[float], float]]] = {"random": {}, "bec-1": {}}
+    levels = ["READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"]
+    isolation_summary: List[Tuple[str, str]] = []
 
-    for i, key_count in enumerate(KEY_COUNTS):
-        print(f"--- Key count {key_count} ---")
-        generate_diluted(random_workload_path, key_count, use_limit=False)
-        if write_skew_mode:
-            bec1_cfg = generate_write_skew_workload(
-                keys=key_count,
-                limit=EXPLORATION_TXN_LIMIT,
+    for isolation_level in levels:
+        print()
+        print(f"=== Isolation Level: {isolation_level} ===")
+
+        results: Dict[str, Dict[int, Tuple[Optional[float], float]]] = {
+            "random": {},
+            "bec-1": {},
+        }
+
+        bec1_successes_total = 0
+
+        for i, key_count in enumerate(KEY_COUNTS):
+            print(f"--- Key count {key_count} ---")
+            generate_diluted(
+                random_workload_path,
+                key_count,
+                use_limit=False,
+                isolation_level=isolation_level,
             )
-            save_yaml(bec1_cfg, bec1_workload_path)
-        else:
-            generate_diluted(bec1_workload_path, key_count, use_limit=True)
-        elle_model = extract_elle_model(bec1_workload_path)
-
-        for strategy in STRATEGIES:
-            values: List[Optional[float]] = []
-            for _ in range(N_TRIALS):
-                if strategy == "random":
-                    values.append(run_random(random_workload_path, history_path, elle_model))
-                else:
-                    ttff, _ = run_bec1(
-                        bec1_workload_path, exploration_path, profile_path,
-                        next_attack_path, attack_history_path, elle_model, key_count,
-                    )
-                    values.append(ttff)
-            successes = [v for v in values if v is not None]
-            n_ok, n_to = len(successes), len(values) - len(successes)
-            if n_ok == 0:
-                results[strategy][key_count] = (None, 0.0)
-                print(f"  {strategy}: timeout ({n_to}/{len(values)} trials)")
+            if write_skew_mode:
+                bec1_cfg = generate_write_skew_workload(
+                    keys=key_count,
+                    limit=EXPLORATION_TXN_LIMIT,
+                    isolation_level=isolation_level,
+                )
+                save_yaml(bec1_cfg, bec1_workload_path)
             else:
-                mean_val = sum(successes) / n_ok
-                std_val = statistics.stdev(successes) if n_ok >= 2 else 0.0
-                results[strategy][key_count] = (mean_val, std_val)
-                extra = f", {n_to} timeout" if n_to else ""
-                print(f"  {strategy}: {mean_val:.1f}±{std_val:.1f}s ({len(values)} trials{extra})")
+                generate_diluted(
+                    bec1_workload_path,
+                    key_count,
+                    use_limit=True,
+                    isolation_level=isolation_level,
+                )
+            elle_model = extract_elle_model(bec1_workload_path)
 
-    key_counts = KEY_COUNTS
-    r_vals = []
-    r_errs = []
-    b_vals = []
-    b_errs = []
-    for k in key_counts:
-        rm, rs = results["random"].get(k, (None, 0.0))
-        bm, bs = results["bec-1"].get(k, (None, 0.0))
-        r_vals.append(float(rm) if rm is not None else math.nan)
-        r_errs.append(rs)
-        b_vals.append(float(bm) if bm is not None else math.nan)
-        b_errs.append(bs)
+            for strategy in STRATEGIES:
+                values: List[Optional[float]] = []
+                for _ in range(N_TRIALS):
+                    if strategy == "random":
+                        values.append(
+                            run_random(random_workload_path, history_path, elle_model)
+                        )
+                    else:
+                        ttff, _ = run_bec1(
+                            bec1_workload_path,
+                            exploration_path,
+                            profile_path,
+                            next_attack_path,
+                            attack_history_path,
+                            elle_model,
+                            key_count,
+                        )
+                        values.append(ttff)
+                successes = [v for v in values if v is not None]
+                n_ok, n_to = len(successes), len(values) - len(successes)
+                if strategy == "bec-1":
+                    bec1_successes_total += n_ok
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    r_lower = [min(err, val) if not math.isnan(val) else 0 for val, err in zip(r_vals, r_errs)]
-    r_upper = r_errs
-    b_lower = [min(err, val) if not math.isnan(val) else 0 for val, err in zip(b_vals, b_errs)]
-    b_upper = b_errs
-    ax.errorbar(key_counts, r_vals, yerr=(r_lower, r_upper), fmt="o-", color="red", label="Random", linewidth=2, markersize=8, capsize=3)
-    ax.errorbar(key_counts, b_vals, yerr=(b_lower, b_upper), fmt="s-", color="blue", label="BEC-1", linewidth=2, markersize=8, capsize=3)
-    ax.set_xlabel("Key Space Size", fontsize=12)
-    ax.set_ylabel("Time to Bug (seconds)", fontsize=12)
-    ax.set_title("Time-to-Bug vs Key Space Size: Random vs BEC-1 (mean ± std, 5 trials)")
-    ax.legend(loc="upper left", fontsize=11)
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(bottom=0)
-    ax.set_xticks(key_counts)
-    ax.get_xaxis().set_major_formatter(plt.FuncFormatter(lambda x, _: f"{int(x):,}"))
-    fig.tight_layout()
-    fig.savefig(OUTPUT_PNG, dpi=150)
-    plt.close(fig)
+                if n_ok == 0:
+                    results[strategy][key_count] = (None, 0.0)
+                    print(f"  {strategy}: timeout ({n_to}/{len(values)} trials)")
+                else:
+                    mean_val = sum(successes) / n_ok
+                    std_val = (
+                        statistics.stdev(successes) if n_ok >= 2 else 0.0
+                    )
+                    results[strategy][key_count] = (mean_val, std_val)
+                    extra = f", {n_to} timeout" if n_to else ""
+                    print(
+                        f"  {strategy}: {mean_val:.1f}±{std_val:.1f}s ({len(values)} trials{extra})"
+                    )
+
+
+        key_counts = KEY_COUNTS
+        r_vals = []
+        r_errs = []
+        b_vals = []
+        b_errs = []
+        for k in key_counts:
+            rm, rs = results["random"].get(k, (None, 0.0))
+            bm, bs = results["bec-1"].get(k, (None, 0.0))
+            r_vals.append(float(rm) if rm is not None else math.nan)
+            r_errs.append(rs)
+            b_vals.append(float(bm) if bm is not None else math.nan)
+            b_errs.append(bs)
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        r_lower = [
+            min(err, val) if not math.isnan(val) else 0
+            for val, err in zip(r_vals, r_errs)
+        ]
+        r_upper = r_errs
+        b_lower = [
+            min(err, val) if not math.isnan(val) else 0
+            for val, err in zip(b_vals, b_errs)
+        ]
+        b_upper = b_errs
+        ax.errorbar(
+            key_counts,
+            r_vals,
+            yerr=(r_lower, r_upper),
+            fmt="o-",
+            color="red",
+            label="Random",
+            linewidth=2,
+            markersize=8,
+            capsize=3,
+        )
+        ax.errorbar(
+            key_counts,
+            b_vals,
+            yerr=(b_lower, b_upper),
+            fmt="s-",
+            color="blue",
+            label="BEC-1",
+            linewidth=2,
+            markersize=8,
+            capsize=3,
+        )
+        ax.set_xlabel("Key Space Size", fontsize=12)
+        ax.set_ylabel("Time to Bug (seconds)", fontsize=12)
+        ax.set_title(
+            "Time-to-Bug vs Key Space Size: Random vs BEC-1 (mean ± std, 5 trials)"
+        )
+        ax.legend(loc="upper left", fontsize=11)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0)
+        ax.set_xticks(key_counts)
+        ax.get_xaxis().set_major_formatter(
+            plt.FuncFormatter(lambda x, _: f"{int(x):,}")
+        )
+        fig.tight_layout()
+        fig.savefig(OUTPUT_PNG, dpi=150)
+        plt.close(fig)
+        print()
+        print(f"Plot saved for {isolation_level}: {OUTPUT_PNG}")
+
+        if bec1_successes_total == 0:
+            isolation_summary.append(
+                (isolation_level, "SAFE (0 successful BEC-1 attacks)"),
+            )
+            break
+        else:
+            isolation_summary.append(
+                (
+                    isolation_level,
+                    f"VULNERABLE (Found {bec1_successes_total} successful BEC-1 attacks)",
+                )
+            )
+
     print()
-    print(f"Plot saved: {OUTPUT_PNG}")
+    print("=== Isolation Level Summary ===")
+    for level, status in isolation_summary:
+        print(f"{level}: {status}")
 
     return 0
 

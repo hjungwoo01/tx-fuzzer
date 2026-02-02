@@ -12,6 +12,7 @@ def generate_write_skew_workload(
     keys: int,
     limit: Optional[int] = None,
     dsn: Optional[str] = None,
+    isolation_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate a workload config that targets Write Skew (G2) anomalies.
@@ -46,7 +47,7 @@ def generate_write_skew_workload(
             "transactions": [
                 {
                     "name": "cross_over",
-                    "isolation": "READ COMMITTED",
+                    "isolation": isolation_level or "READ COMMITTED",
                     "timeout": "2s",
                     "steps": [
                         {
