@@ -141,9 +141,6 @@ def retarget_query(query: Dict[str, Any], target_key: Any) -> bool:
 
     key_spec = elle.get("key")
     
-    # Read-Only Pivot strategy: Only retarget queries where key == "$1"
-    # This ensures we only target the shared dependency (pivot) and preserve
-    # randomness of $2 to avoid lock contention
     if key_spec != "$1":
         return False
     args = query.get("args", [])
