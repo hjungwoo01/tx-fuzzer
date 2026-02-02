@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import os
@@ -10,6 +11,10 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 try:
     import yaml
@@ -23,7 +28,6 @@ try:
 except ImportError as exc:
     raise SystemExit("[ERROR] Missing matplotlib. pip install matplotlib") from exc
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 KEY_COUNTS = [1000, 5000, 10000, 25000, 50000]
 STRATEGIES = ["random", "bec-1"]
 N_TRIALS = 5
@@ -35,6 +39,8 @@ RETARGET_SCRIPT = REPO_ROOT / "scripts" / "next_workload_from_profile.py"
 GENERATE_REPLAY_SCRIPT = REPO_ROOT / "scripts" / "generate_replay.py"
 ANALYZE_SCRIPT = REPO_ROOT / "scripts" / "analyze_bec1.py"
 OUTPUT_PNG = Path(__file__).resolve().parent / "benchmark_results.png"
+
+from scripts.utils import generate_write_skew_workload
 
 
 def verify_retarget_patches_pivot() -> Tuple[bool, str]:
@@ -373,6 +379,17 @@ def run_bec1(
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Scaling benchmark: Random vs BEC-1 (Lost Update or Write Skew).",
+    )
+    parser.add_argument(
+        "--write-skew",
+        action="store_true",
+        help="Use Write Skew (G2) workload for BEC-1 instead of Lost Update (G1).",
+    )
+    args = parser.parse_args()
+    write_skew_mode: bool = getattr(args, "write_skew", False)
+
     ok, msg = verify_retarget_patches_pivot()
     if not ok:
         print(f"[ERROR] {msg}", file=sys.stderr)
@@ -382,6 +399,11 @@ def main() -> int:
     if not TEMPLATE_PATH.exists():
         print(f"[ERROR] Template not found: {TEMPLATE_PATH}", file=sys.stderr)
         return 1
+
+    if write_skew_mode:
+        print("[BEC-1] Mode: Write Skew (G2) workload", file=sys.stderr)
+    else:
+        print("[BEC-1] Mode: Lost Update (G1) workload", file=sys.stderr)
 
     work_dir = REPO_ROOT / "experiments"
     work_dir.mkdir(exist_ok=True)
@@ -398,8 +420,15 @@ def main() -> int:
     for i, key_count in enumerate(KEY_COUNTS):
         print(f"--- Key count {key_count} ---")
         generate_diluted(random_workload_path, key_count, use_limit=False)
-        generate_diluted(bec1_workload_path, key_count, use_limit=True)
-        elle_model = extract_elle_model(random_workload_path)
+        if write_skew_mode:
+            bec1_cfg = generate_write_skew_workload(
+                keys=key_count,
+                limit=EXPLORATION_TXN_LIMIT,
+            )
+            save_yaml(bec1_cfg, bec1_workload_path)
+        else:
+            generate_diluted(bec1_workload_path, key_count, use_limit=True)
+        elle_model = extract_elle_model(bec1_workload_path)
 
         for strategy in STRATEGIES:
             values: List[Optional[float]] = []
