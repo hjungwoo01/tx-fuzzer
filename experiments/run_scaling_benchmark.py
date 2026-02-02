@@ -8,6 +8,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -143,6 +144,58 @@ def save_yaml(data: Dict[str, Any], p: Path) -> None:
         yaml.safe_dump(data, f, sort_keys=False, default_flow_style=False)
 
 
+def wait_for_postgres(container_name: str, timeout_s: int = 60) -> bool:
+    """Block until the Postgres container reports ready, or timeout."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = subprocess.run(
+            [
+                "docker",
+                "exec",
+                container_name,
+                "pg_isready",
+                "-U",
+                "postgres",
+                "-d",
+                "postgres",
+            ],
+            cwd=str(REPO_ROOT),
+            stdout=_DEVNULL,
+            stderr=_DEVNULL,
+        )
+        if r.returncode == 0:
+            return True
+        time.sleep(1)
+    return False
+
+
+def chaos_monkey(container_name: str, interval: int = 5) -> None:
+    """Periodically restart the Postgres Docker container.
+
+    This is intended to run in a background thread to exercise crash
+    recovery and atomic visibility during the benchmark.
+    """
+    print(f"[CHAOS] Chaos monkey starting for container '{container_name}' (interval={interval}s)")
+
+    wait_for_postgres(container_name, timeout_s=120)
+    while True:
+        time.sleep(interval)
+        print(f"[CHAOS] Restarting container '{container_name}'")
+        r = subprocess.run(
+            ["docker", "restart", container_name],
+            cwd=str(REPO_ROOT),
+            stdout=_DEVNULL,
+            stderr=_DEVNULL,
+        )
+        if r.returncode != 0:
+            print(f"[CHAOS] Failed to restart container '{container_name}' (exit={r.returncode})", file=sys.stderr)
+            time.sleep(interval)
+            continue
+
+        if not wait_for_postgres(container_name, timeout_s=120):
+            print(f"[CHAOS] WARNING: Postgres in '{container_name}' did not become ready after restart", file=sys.stderr)
+
+
 EXPLORATION_TXN_LIMIT = 20000
 
 
@@ -191,10 +244,49 @@ _DEVNULL = subprocess.DEVNULL
 
 
 def run_workload(workload_path: Path, history_path: Path) -> bool:
+    """Run a workload, retrying while the database is temporarily unavailable.
+
+    This makes the benchmark resilient to short DB outages caused by the
+    chaos monkey restarting the Postgres container.
+    """
     cmd = ["go", "run", "./cmd/runner", "-config", str(workload_path), "-out", str(history_path)]
     env = {**os.environ, "TXFUZZER_QUIET": "1"}
-    r = subprocess.run(cmd, cwd=str(REPO_ROOT), stdout=_DEVNULL, stderr=_DEVNULL, env=env)
-    return r.returncode == 0
+
+    try:
+        retry_window_s = int(os.environ.get("TXFUZZER_DB_RETRY_WINDOW", "60"))
+    except ValueError:
+        retry_window_s = 60
+
+    deadline = time.time() + max(retry_window_s, 0)
+    attempt = 0
+    while True:
+        attempt += 1
+        r = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            stdout=_DEVNULL,
+            stderr=_DEVNULL,
+            env=env,
+        )
+        if r.returncode == 0:
+            return True
+
+        now = time.time()
+        if now >= deadline:
+            print(
+                f"[runner] Workload failed after {attempt} attempts "
+                f"(last exit={r.returncode}); giving up",
+                file=sys.stderr,
+            )
+            return False
+
+        remaining = int(deadline - now)
+        print(
+            f"[runner] Workload exited with {r.returncode}; "
+            f"retrying while DB recovers (time left {remaining}s)",
+            file=sys.stderr,
+        )
+        time.sleep(1)
 
 
 def check_validity(history_path: Path, elle_model: str) -> Tuple[bool, Optional[int]]:
@@ -400,6 +492,16 @@ def main() -> int:
         action="store_true",
         help="Use Write Skew (G2) workload for BEC-1 instead of Lost Update (G1).",
     )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        help="Enable Chaos Mode: periodically restart the Postgres Docker container.",
+    )
+    parser.add_argument(
+        "--chaos-container",
+        default="postgres",
+        help="Name of the Postgres Docker container to restart in Chaos Mode (default: postgres).",
+    )
     args = parser.parse_args()
     write_skew_mode: bool = getattr(args, "write_skew", False)
 
@@ -417,6 +519,18 @@ def main() -> int:
         print("[BEC-1] Mode: Write Skew (G2) workload", file=sys.stderr)
     else:
         print("[BEC-1] Mode: Lost Update (G1) workload", file=sys.stderr)
+
+    if getattr(args, "chaos", False):
+        # Default to the tx-fuzzer Postgres container name, override with --chaos-container if needed.
+        container_name = getattr(args, "chaos_container", "txfuzz-pg")
+        t = threading.Thread(
+            target=chaos_monkey,
+            args=(container_name,),
+            kwargs={"interval": 5},
+            daemon=True,
+        )
+        t.start()
+        print(f"[CHAOS] Chaos Mode enabled against container '{container_name}'", file=sys.stderr)
 
     work_dir = REPO_ROOT / "experiments"
     work_dir.mkdir(exist_ok=True)
