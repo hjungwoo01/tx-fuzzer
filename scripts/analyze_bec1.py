@@ -52,6 +52,108 @@ class EdgeCandidate:
     read_value: Any
     write_value: Any
 
+
+def _summarize_txn_ops(txn: Transaction) -> Dict[str, Any]:
+    """
+    Compute basic per-transaction patterns to help classify anomaly types.
+
+    We stay intentionally generic here and only look at Elle-level ops
+    (reads/writes + keys), not SQL strings, so this works for both the
+    Lost Update (G1) and Write Skew (G2) workloads.
+    """
+    reads: List[Tuple[int, Operation]] = []
+    writes: List[Tuple[int, Operation]] = []
+    for idx, op in enumerate(txn.ops):
+        if op.op_type == "r":
+            reads.append((idx, op))
+        elif op.op_type == "w":
+            writes.append((idx, op))
+
+    read_keys = [op.key for _, op in reads]
+    write_keys = [op.key for _, op in writes]
+    read_set = set(read_keys)
+    write_set = set(write_keys)
+
+    # Did this transaction perform SELECT ... then UPDATE ... on the *same* key?
+    read_then_write_same_key = False
+    for r_idx, r in reads:
+        for w_idx, w in writes:
+            if r.key == w.key and r_idx < w_idx:
+                read_then_write_same_key = True
+                break
+        if read_then_write_same_key:
+            break
+
+    # Classic write-skew shape: reads and writes are on disjoint key-sets.
+    disjoint_read_write = bool(read_set) and bool(write_set) and read_set.isdisjoint(write_set)
+
+    return {
+        "read_keys": read_set,
+        "write_keys": write_set,
+        "read_then_write_same_key": read_then_write_same_key,
+        "disjoint_read_write": disjoint_read_write,
+    }
+
+
+def classify_cycle_pattern(
+    transactions: Sequence[Transaction],
+    best: EdgeCandidate,
+    has_cycle: bool,
+) -> Dict[str, Any]:
+    """
+    Very lightweight heuristic classifier for the anomaly type behind the
+    selected BEC-1 edge.
+
+    - Case A (Lost Update / G1):
+        If either side of the edge does SELECT (read) *then* UPDATE (write)
+        on the *same* key as the RW edge, we tag this as a Lost Update style
+        cycle.
+
+    - Case B (Write Skew / G2):
+        If both sides READ key A and WRITE key B where A != B, we tag this
+        as a Write Skew pattern.
+    """
+    if not has_cycle or best is None:
+        return {"kind": "none", "reason": "no_cycle"}
+
+    by_id: Dict[str, Transaction] = {t.txn_id: t for t in transactions}
+    reader_txn = by_id.get(best.reader)
+    writer_txn = by_id.get(best.writer)
+    if reader_txn is None or writer_txn is None:
+        return {"kind": "unknown", "reason": "missing_txn"}
+
+    r_summary = _summarize_txn_ops(reader_txn)
+    w_summary = _summarize_txn_ops(writer_txn)
+
+    key = best.key
+
+    # --- Case A: Lost Update (G1) ---
+    lost_update = False
+    for summary in (r_summary, w_summary):
+        if (
+            key in summary["read_keys"]
+            and key in summary["write_keys"]
+            and summary["read_then_write_same_key"]
+        ):
+            lost_update = True
+            break
+
+    if lost_update:
+        return {
+            "kind": "lost_update",
+            "reason": "select_then_update_same_key",
+        }
+
+    # --- Case B: Write Skew (G2) ---
+    # Both txns read a keyset that is disjoint from what they write.
+    if r_summary["disjoint_read_write"] and w_summary["disjoint_read_write"]:
+        return {
+            "kind": "write_skew",
+            "reason": "read_key_a_write_key_b_disjoint",
+        }
+
+    return {"kind": "unknown", "reason": "pattern_not_matched"}
+
 def convert_edn(value: Any) -> Any:
     """Recursively convert EDN data structures into plain Python structures."""
     if isinstance(value, Keyword):
@@ -243,7 +345,9 @@ def build_graph_and_candidates(
                 
     return graph, candidates
 
-def pick_best_bec1(graph: nx.DiGraph, candidates: Iterable[EdgeCandidate]) -> Optional[EdgeCandidate]:
+def pick_best_bec1(
+    graph: nx.DiGraph, candidates: Iterable[EdgeCandidate]
+) -> Tuple[Optional[EdgeCandidate], bool]:
     best_cand = None
     min_cycle_len = float('inf')
     
@@ -317,13 +421,13 @@ def pick_best_bec1(graph: nx.DiGraph, candidates: Iterable[EdgeCandidate]) -> Op
 
     if best_cand:
         print(f"[BEC-1] Found Cycle (len {min_cycle_len}) on Key {best_cand.key}")
-        return best_cand
+        return best_cand, True
         
     if best_suspicion:
         print(f"[BEC-1] No Cycle. Suspicion on Key {best_suspicion.key} (Gap: {min_suspicion_delta} ops)")
-        return best_suspicion
+        return best_suspicion, False
         
-    return None
+    return None, False
 
 def normalize_key(key: Any) -> Any:
     if isinstance(key, str) and key.isdigit(): return int(key)
@@ -383,7 +487,7 @@ def main():
     if unique_count < len(candidates):
         print(f"[BEC-1] Deduplicated to {unique_count} unique candidates", file=sys.stderr)
     
-    best = pick_best_bec1(graph, unique_candidates)
+    best, has_cycle = pick_best_bec1(graph, unique_candidates)
     
     if best:
         # Map txn_id -> workload template name for reader/writer
@@ -393,12 +497,42 @@ def main():
                 txn_id_to_name[t.txn_id] = t.txn_name
         p1_name = txn_id_to_name.get(best.reader) or best.reader
         p2_name = txn_id_to_name.get(best.writer) or best.writer
-        payload = {
+
+        payload: Dict[str, Any] = {
             "target_key": normalize_key(best.key),
             "p1_name": p1_name,
             "p2_name": p2_name,
             "strategy": "interleave",
         }
+
+        # --- Patch Recommender: classify anomaly + suggest a patch ---
+        classification = classify_cycle_pattern(transactions, best, has_cycle)
+        red = "\033[91m"
+        reset = "\033[0m"
+
+        if has_cycle and classification.get("kind") == "lost_update":
+            msg = (
+                "Critical G1 Vulnerability detected. "
+                "PATCH: Change your SQL to `SELECT ... FOR UPDATE` to lock rows during the read."
+            )
+            print(f"{red}[BEC-1][PATCH RECOMMENDER] {msg}{reset}", file=sys.stderr)
+            payload["cycle_type"] = "G1_lost_update"
+            payload["diagnosis"] = "Critical G1 Lost Update cycle detected."
+            payload["patch_recommendation"] = (
+                "Change your SQL to `SELECT ... FOR UPDATE` to lock rows during the read."
+            )
+        elif has_cycle and classification.get("kind") == "write_skew":
+            msg = (
+                "G2 Write Skew detected. "
+                "PATCH: Switch isolation level to `SERIALIZABLE` or use predicate locking."
+            )
+            print(f"{red}[BEC-1][PATCH RECOMMENDER] {msg}{reset}", file=sys.stderr)
+            payload["cycle_type"] = "G2_write_skew"
+            payload["diagnosis"] = "G2 Write Skew cycle detected."
+            payload["patch_recommendation"] = (
+                "Switch isolation level to `SERIALIZABLE` or use predicate locking."
+            )
+
         if not txn_id_to_name.get(best.reader) or not txn_id_to_name.get(best.writer):
             print(
                 "[BEC-1] WARNING: History missing txn_name in meta for some actors; using txn_id. "
