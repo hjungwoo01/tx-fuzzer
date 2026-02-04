@@ -74,7 +74,6 @@ def _summarize_txn_ops(txn: Transaction) -> Dict[str, Any]:
     read_set = set(read_keys)
     write_set = set(write_keys)
 
-    # Did this transaction perform SELECT ... then UPDATE ... on the *same* key?
     read_then_write_same_key = False
     for r_idx, r in reads:
         for w_idx, w in writes:
@@ -84,7 +83,6 @@ def _summarize_txn_ops(txn: Transaction) -> Dict[str, Any]:
         if read_then_write_same_key:
             break
 
-    # Classic write-skew shape: reads and writes are on disjoint key-sets.
     disjoint_read_write = bool(read_set) and bool(write_set) and read_set.isdisjoint(write_set)
 
     return {
@@ -505,7 +503,6 @@ def main():
             "strategy": "interleave",
         }
 
-        # --- Patch Recommender: classify anomaly + suggest a patch ---
         classification = classify_cycle_pattern(transactions, best, has_cycle)
         red = "\033[91m"
         reset = "\033[0m"
