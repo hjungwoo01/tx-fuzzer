@@ -74,7 +74,7 @@ The summary will include:
 
 2. **Isolation anomalies (lost update, phantom, read skew, etc.)**  
    Use the **mixed-mode runner** instead: `run_mixed_attack.py` with `--attack g1` (or `phantom`, `read_skew`, etc.) and `--isolation "READ COMMITTED"`.  
-   - **Success Rate &gt; 0%** in the summary means the anomaly was observed (e.g. lost update happened).  
+   - **Success Rate > 0%** in the summary means the anomaly was observed (e.g. lost update happened).  
    - With `--isolation "SERIALIZABLE"` you typically see 0% (DB prevents the anomaly).  
    - Use `--noise-threads 20` and `--duration 60` (or more) so the attack runs under load and has more chances to interleave badly.
 
