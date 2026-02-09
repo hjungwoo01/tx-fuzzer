@@ -4,5 +4,9 @@ edn_format
 networkx
 matplotlib
 
+psycopg2-binary
+pymysql
+redis
+
 # Testing
 pytest
