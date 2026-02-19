@@ -11,23 +11,42 @@ Scenario:
 Check:
     - If final v=1  -> FAIL (T2 was overwritten / lost).
     - If v=10 or T1 aborts with SerializationFailure -> PASS.
+
+When run directly, writes execution history to logs/g1_lost_update.log.
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-import psycopg2
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+from adapters import PostgresAdapter
 from litmus_utils import LitmusTester
+from logger import HistoryLogger
+
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
 
-def run_test(dsn: str, isolation: str) -> int:
-    tester = LitmusTester(dsn, isolation_level=isolation)
+def run_test(dsn: str, isolation: str, adapter=None) -> int:
+    """
+    Run G1 Lost Update. If adapter is None, creates PostgresAdapter with execution logger.
+    """
+    if adapter is None:
+        log_path = ROOT / "logs" / "g1_lost_update.log"
+        logger = HistoryLogger(log_path)
+        logger.log(
+            "CONFIG",
+            "INFO",
+            f"target=postgres test=lost_update isolation={isolation} dsn={dsn}",
+        )
+        adapter = PostgresAdapter(dsn, isolation_level=isolation, logger=logger)
+    tester = LitmusTester(adapter=adapter)
     anomaly_name = "G1: Lost Update"
 
     try:
@@ -37,21 +56,21 @@ def run_test(dsn: str, isolation: str) -> int:
         tester.cur2.execute("BEGIN")
 
         # 1. T1 reads Key 1 (Value 0)
-        tester.cur1.execute("SELECT v FROM kv WHERE k = 1")
-        row = tester.cur1.fetchone()
-        v1 = row[0] if row is not None else None
+        v1 = adapter.read(1, conn_id=1)
 
         # 2. T2 updates Key 1 to 10 and COMMITS
-        tester.cur2.execute("UPDATE kv SET v = 10 WHERE k = 1")
+        adapter.write(1, 10, conn_id=2)
         tester.conn2.commit()
 
         # 3. T1 updates Key 1 to 1 and attempts to COMMIT
         saw_serialization_failure = False
         try:
-            tester.cur1.execute("UPDATE kv SET v = 1 WHERE k = 1")
+            adapter.write(1, 1, conn_id=1)
             tester.conn1.commit()
-        except psycopg2.errors.SerializationFailure:
-            saw_serialization_failure = True
+        except Exception as e:
+            ser_fail = getattr(psycopg2.errors, "SerializationFailure", None) if psycopg2 else None
+            if ser_fail is not None and type(e) is ser_fail:
+                saw_serialization_failure = True
             tester.conn1.rollback()
 
         # Read Key 1 in a fresh transaction

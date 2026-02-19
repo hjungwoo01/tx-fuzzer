@@ -10,105 +10,104 @@ Scenario:
     4. T2 updates Key 1 to 100 and COMMITS.
 
 Check:
-    - If both transactions commit successfully -> FAIL (write skew occurred).
-    - If one transaction is blocked/aborted with SerializationFailure -> PASS.
+    - If both transactions commit and both keys end up 100 -> FAIL (write skew occurred).
+    - If one transaction is blocked/aborted (serialization/lock failure) -> PASS.
 """
 
-import argparse
 import sys
 from pathlib import Path
-
-import psycopg2
+from typing import TYPE_CHECKING
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from litmus_utils import LitmusTester
+if TYPE_CHECKING:
+    from adapters import DatabaseAdapter
+
+GREEN = "\033[92m"
+RED = "\033[91m"
+RESET = "\033[0m"
 
 
-def run_test(dsn: str) -> int:
-    tester = LitmusTester(dsn)
-    anomaly_name = "G2: Write Skew"
+def run_one(adapter: "DatabaseAdapter") -> bool:
+    """
+    Run one G2 Write Skew scenario. No output.
+    Returns True if write skew was observed (both txns committed, both keys 100), False otherwise.
+    """
+    adapter.setup_schema(key_count=2)
+
+    adapter.cur1.execute("BEGIN")
+    adapter.cur2.execute("BEGIN")
+
+    adapter.cur1.execute("SELECT v FROM kv WHERE k = 1")
+    adapter.cur1.fetchone()
+
+    adapter.cur2.execute("SELECT v FROM kv WHERE k = 2")
+    adapter.cur2.fetchone()
+
+    t1_committed = False
+    t2_committed = False
 
     try:
-        tester.setup_db()
+        adapter.cur1.execute("UPDATE kv SET v = 100 WHERE k = 2")
+        adapter.conn1.commit()
+        t1_committed = True
+    except Exception:
+        adapter.conn1.rollback()
 
-        tester.cur1.execute("BEGIN")
-        tester.cur2.execute("BEGIN")
+    try:
+        adapter.cur2.execute("UPDATE kv SET v = 100 WHERE k = 1")
+        adapter.conn2.commit()
+        t2_committed = True
+    except Exception:
+        adapter.conn2.rollback()
 
-        # 1. T1 reads Key 1
-        tester.cur1.execute("SELECT v FROM kv WHERE k = 1")
-        _ = tester.cur1.fetchone()
+    with adapter.conn1.cursor() as c:
+        c.execute("SELECT v FROM kv WHERE k = 1")
+        r1 = c.fetchone()
+        c.execute("SELECT v FROM kv WHERE k = 2")
+        r2 = c.fetchone()
+    v1 = r1[0] if r1 is not None else None
+    v2 = r2[0] if r2 is not None else None
 
-        # 2. T2 reads Key 2
-        tester.cur2.execute("SELECT v FROM kv WHERE k = 2")
-        _ = tester.cur2.fetchone()
+    return bool(t1_committed and t2_committed and v1 == 100 and v2 == 100)
 
-        t1_committed = False
-        t2_committed = False
 
-        # 3. T1 updates Key 2 to 100 and attempts to COMMIT
-        try:
-            tester.cur1.execute("UPDATE kv SET v = 100 WHERE k = 2")
-            tester.conn1.commit()
-            t1_committed = True
-        except psycopg2.errors.SerializationFailure:
-            tester.conn1.rollback()
+def run_test(adapter: "DatabaseAdapter") -> int:
+    """Run the G2 Write Skew litmus test using the given database adapter (single run, with report)."""
+    anomaly_name = "G2: Write Skew"
+    anomaly = run_one(adapter)
 
-        # 4. T2 updates Key 1 to 100 and attempts to COMMIT
-        try:
-            tester.cur2.execute("UPDATE kv SET v = 100 WHERE k = 1")
-            tester.conn2.commit()
-            t2_committed = True
-        except psycopg2.errors.SerializationFailure:
-            tester.conn2.rollback()
+    if anomaly:
+        print(f"[{anomaly_name}] {RED}FAIL (Vulnerable){RESET} - Write Skew Detected (both keys are 100).")
+        return 1
 
-        if t1_committed and t2_committed:
-            tester.report(
-                anomaly_name,
-                False,
-                "Both T1 and T2 committed cross-over writes (write skew observed).",
-            )
-            return 1
-
-        if not t1_committed and not t2_committed:
-            tester.report(
-                anomaly_name,
-                True,
-                "Both transactions were aborted with SerializationFailure; write skew prevented.",
-            )
-        elif not t1_committed:
-            tester.report(
-                anomaly_name,
-                True,
-                "T1 was aborted with SerializationFailure; only T2 committed.",
-            )
-        else:
-            tester.report(
-                anomaly_name,
-                True,
-                "T2 was aborted with SerializationFailure; only T1 committed.",
-            )
-
-        return 0
-
-    finally:
-        tester.teardown()
+    print(
+        f"[{anomaly_name}] {GREEN}PASS (Safe){RESET} - "
+        "One or both transactions were aborted; write skew prevented."
+    )
+    return 0
 
 
 def main() -> int:
+    """Standalone entry point (PostgreSQL default DSN)."""
+    import argparse
+    from adapters import PostgresAdapter
+
     parser = argparse.ArgumentParser(description="Litmus test for G2: Write Skew.")
     parser.add_argument(
         "--dsn",
         default="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
-        help=(
-            "PostgreSQL DSN. "
-            "Defaults to postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-        ),
+        help="PostgreSQL DSN.",
     )
     args = parser.parse_args()
-    return run_test(args.dsn)
+    adapter = PostgresAdapter(args.dsn)
+    adapter.connect()
+    try:
+        return run_test(adapter)
+    finally:
+        adapter.teardown()
 
 
 if __name__ == "__main__":
