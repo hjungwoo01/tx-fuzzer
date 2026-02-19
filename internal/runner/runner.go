@@ -2,10 +2,13 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +24,12 @@ type Env struct {
 	Hist             *history.Writer
 	Start            time.Time
 	SkipHistoryClose bool
+}
+
+type TraceStep struct {
+	ClientID int    `json:"client_id"`
+	SQL      string `json:"sql"`
+	Type     string `json:"type"` // "invoke" | "ok"
 }
 
 func Run(ctx context.Context, env *Env) error {
@@ -43,6 +52,8 @@ func Run(ctx context.Context, env *Env) error {
 	end := env.Start.Add(duration)
 
 	errCh := make(chan error, clients)
+	var traceMu sync.Mutex
+	var traceSteps []TraceStep
 	barrierEvery := env.Cfg.Scheduling.BarrierEvery
 	bar := NewCyclicBarrier(env.Cfg.Scheduling.Clients)
 
@@ -178,6 +189,14 @@ func Run(ctx context.Context, env *Env) error {
 						}
 					}
 
+					traceMu.Lock()
+					traceSteps = append(traceSteps, TraceStep{
+						ClientID: process,
+						SQL:      qp.Template.SQL,
+						Type:     "invoke",
+					})
+					traceMu.Unlock()
+
 					recordQueryOp(env.Hist, history.Invoke, process, txnID, stepIndex, qp.Template.SQL, args, invokeDetails, "", stepStartMono, stepStartWall)
 
 					var rowsAffected int64 = -1
@@ -281,6 +300,15 @@ func Run(ctx context.Context, env *Env) error {
 					} else {
 						lastElleMono = opEndMono
 						lastElleWall = opEndWall
+
+						traceMu.Lock()
+						traceSteps = append(traceSteps, TraceStep{
+							ClientID: process,
+							SQL:      qp.Template.SQL,
+							Type:     "ok",
+						})
+						traceMu.Unlock()
+
 						recordQueryOp(env.Hist, history.Ok, process, txnID, stepIndex, qp.Template.SQL, args, okDetails, "", opEndMono, opEndWall)
 					}
 
@@ -417,6 +445,17 @@ func Run(ctx context.Context, env *Env) error {
 			runErr = err
 		}
 	}
+
+	if len(traceSteps) > 0 {
+		if err := writeJSONTrace(traceSteps); err != nil {
+			if runErr == nil {
+				runErr = err
+			} else if os.Getenv("TXFUZZER_QUIET") == "" {
+				fmt.Printf("trace write error: %v\n", err)
+			}
+		}
+	}
+
 	if env.Hist != nil && !env.SkipHistoryClose {
 		if err := env.Hist.Close(); err != nil {
 			if runErr == nil {
@@ -427,6 +466,23 @@ func Run(ctx context.Context, env *Env) error {
 		}
 	}
 	return runErr
+}
+
+// writeJSONTrace writes the collected minimal trace to logs/trace_latest.json.
+func writeJSONTrace(steps []TraceStep) error {
+	const logDir = "logs"
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(logDir, "trace_latest.json")
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	return enc.Encode(steps)
 }
 
 func hasSelect(sql string) bool {
