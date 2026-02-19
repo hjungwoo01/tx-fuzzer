@@ -6,6 +6,7 @@ matplotlib
 
 psycopg2-binary
 pymysql
+cryptography
 redis
 
 # Testing
