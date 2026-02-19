@@ -1,0 +1,58 @@
+database:
+  kind: postgres
+  dsn: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+
+init_schema: true
+
+workload:
+  datatype: register
+  transactions:
+  
+    - name: read-one
+      isolation: "READ COMMITTED"
+      timeout: "1s"
+      steps:
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: [{rand_int: {min: 1, max: 100}}]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+
+    - name: write-one
+      isolation: "READ COMMITTED"
+      timeout: "2s"
+      steps:
+        - sql: "UPDATE kv SET v=$1, ts=$2 WHERE k=$3"
+          args:
+            - rand_int: {min: 0, max: 1000000}
+            - now_ns: {}
+            - rand_int: {min: 1, max: 100}
+          elle: {f: ":write", key: "$3"}
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: ["$3"]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+
+    - name: read-two
+      isolation: "READ COMMITTED"
+      timeout: "1s"
+      steps:
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: [{rand_int: {min: 1, max: 100}}]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+        - sql: "SELECT v FROM kv WHERE k=$1"
+          args: [{rand_int: {min: 1, max: 100}}]
+          elle: {f: ":read", key: "$1", value_from_result_col: 0}
+
+  mix:
+    - txn: read-one
+      weight: 0.5
+    - txn: write-one
+      weight: 0.3
+    - txn: read-two
+      weight: 0.2
+
+scheduling:
+  duration: "4s"
+  clients: 2
+  barrier_every: 0
+  random_kill_pct: 0
+  jitter_ms_min: 0
+  jitter_ms_max: 0
