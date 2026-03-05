@@ -1,0 +1,27 @@
+version: 1
+suite: postgres_known_anomalies
+notes:
+  - "These are known anomalies/limitations under weaker isolation levels, not PostgreSQL implementation defects."
+  - "Each trial rebuilds schema and setup state to keep runs independent."
+defaults:
+  min_seeds: 30
+  dsn_env: DATABASE_URL
+bugs:
+  - name: write_skew_rr
+    path: write_skew_rr
+    workload: workload.yaml
+    schema: schema.sql
+    setup: setup.sql
+    checker: checker.py
+  - name: lost_update_rc
+    path: lost_update_rc
+    workload: workload.yaml
+    schema: schema.sql
+    setup: setup.sql
+    checker: checker.py
+  - name: serializable_write_skew
+    path: serializable_write_skew
+    workload: workload.yaml
+    schema: schema.sql
+    setup: setup.sql
+    checker: checker.py

@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS on_call;
+
+CREATE TABLE on_call (
+  doctor_id INTEGER PRIMARY KEY,
+  on_call BOOLEAN NOT NULL
+);

@@ -53,3 +53,45 @@ func TestFlattenTxnQueries(t *testing.T) {
 		t.Fatalf("expected args to carry over (got %d)", len(plan.Queries[1].ArgsSpec))
 	}
 }
+
+func TestMaterializeArgsTxWriteID(t *testing.T) {
+	spec := ParseArg(map[string]any{"tx_write_id": map[string]any{}})
+	if spec.Kind != TxWriteID {
+		t.Fatalf("expected TxWriteID spec, got kind=%v", spec.Kind)
+	}
+
+	specs := []GenSpec{spec}
+	ctx := MaterializeContext{Process: 3, TxnID: "tx-17"}
+	a1 := MaterializeArgs(specs, nil, ctx)
+	a2 := MaterializeArgs(specs, nil, ctx)
+	if len(a1) != 1 || len(a2) != 1 {
+		t.Fatalf("expected one materialized arg, got %d and %d", len(a1), len(a2))
+	}
+
+	v1, ok := a1[0].(int64)
+	if !ok {
+		t.Fatalf("expected int64 tx_write_id, got %T", a1[0])
+	}
+	v2, ok := a2[0].(int64)
+	if !ok {
+		t.Fatalf("expected int64 tx_write_id, got %T", a2[0])
+	}
+	if v1 != v2 {
+		t.Fatalf("expected stable tx_write_id within a txn, got %d and %d", v1, v2)
+	}
+	if gotProcess := int(v1 >> 48); gotProcess != 3 {
+		t.Fatalf("expected encoded process=3, got %d (value=%d)", gotProcess, v1)
+	}
+
+	nextTxn := MaterializeArgs(specs, nil, MaterializeContext{Process: 3, TxnID: "tx-18"})
+	nextVal := nextTxn[0].(int64)
+	if nextVal == v1 {
+		t.Fatalf("expected unique value for different txn IDs, both were %d", v1)
+	}
+
+	otherClient := MaterializeArgs(specs, nil, MaterializeContext{Process: 4, TxnID: "tx-17"})
+	otherVal := otherClient[0].(int64)
+	if otherVal == v1 {
+		t.Fatalf("expected unique value across processes, both were %d", v1)
+	}
+}

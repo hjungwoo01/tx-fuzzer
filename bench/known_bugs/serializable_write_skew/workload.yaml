@@ -1,0 +1,23 @@
+name: serializable_write_skew
+scenario: write_skew_guard_serializable
+description: >-
+  Same application pattern as write skew, but with SERIALIZABLE isolation.
+  PostgreSQL should typically abort one transaction with SQLSTATE 40001 instead
+  of allowing the invariant violation.
+isolation_level: SERIALIZABLE
+clients: 2
+ops_per_client: 4
+concurrency: 2
+timing_model:
+  baseline_delays_ms:
+    - [0, 18, 0, 0]
+    - [0, 0, 0, 0]
+  tool:
+    max_delay_ms: 35
+    mutation_jitter_ms: 6
+    conflict_steps: [1, 2]
+expected:
+  classification: expected_serializable_protection
+  invariant: at_least_one_on_call
+  expected_outcome: serialization_failure_observable
+  signal_sqlstate: "40001"

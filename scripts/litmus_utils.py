@@ -1,22 +1,35 @@
 from __future__ import annotations
 
 """
-Shared utilities for PostgreSQL litmus tests.
+Shared utilities for litmus tests.
 
 `LitmusTester` manages a simple two-connection setup against a `kv` table:
-- `kv(k INT PRIMARY KEY, v INT NOT NULL)`
+- SQL: kv(k INT PRIMARY KEY, v INT NOT NULL)
+- Redis: keys kv:1, kv:2, etc.
 
-Each test script is responsible for orchestrating transaction interleavings
-using `conn1`/`cur1` and `conn2`/`cur2`.
+Supports multiple backends via `DatabaseAdapter` (see adapters.py). Pass an adapter
+for multi-backend use, or (dsn, isolation_level) for backward-compatible PostgreSQL.
 """
 
 import sys
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, List, Optional, Sequence, TYPE_CHECKING
 
-import psycopg2
-from psycopg2.extensions import connection as PGConnection
+if TYPE_CHECKING:
+    from adapters import DatabaseAdapter
 
+# Avoid circular import at runtime; LitmusTester(adapter=...) uses adapters when passed.
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None  # type: ignore[assignment]
+
+_ISOLATION_LEVELS = {
+    "READ COMMITTED": "READ COMMITTED",
+    "REPEATABLE READ": "REPEATABLE READ",
+    "SERIALIZABLE": "SERIALIZABLE",
+}
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -33,85 +46,94 @@ class LitmusResult:
     error: Optional[BaseException] = None
 
 
-_ISOLATION_LEVELS = {
-    "READ COMMITTED": "READ COMMITTED",
-    "REPEATABLE READ": "REPEATABLE READ",
-    "SERIALIZABLE": "SERIALIZABLE",
-}
-
-
 class LitmusTester:
-    def __init__(self, dsn: str, isolation_level: str = "READ COMMITTED") -> None:
-        """
-        Open two independent PostgreSQL connections and cursors.
+    """
+    Two-connection litmus test driver. Uses a DatabaseAdapter when provided,
+    otherwise constructs a PostgresAdapter from dsn and isolation_level.
+    """
 
-        """
-        self.dsn = dsn
-        iso_normalized = " ".join(str(isolation_level).upper().split())
-        if iso_normalized not in _ISOLATION_LEVELS:
-            valid = ", ".join(sorted(_ISOLATION_LEVELS))
-            raise ValueError(f"Unsupported isolation level {isolation_level!r}. Valid options: {valid}")
-        try:
-            self.conn1: PGConnection = psycopg2.connect(dsn)
-            self.conn2: PGConnection = psycopg2.connect(dsn)
-        except Exception as exc:
-            print(f"[LitmusTester] Failed to connect using DSN={dsn!r}: {exc}", file=sys.stderr)
-            raise
-
-        self.conn1.autocommit = False
-        self.conn2.autocommit = False
-
-        level_sql = _ISOLATION_LEVELS[iso_normalized]
-        try:
-            with self.conn1.cursor() as c1:
-                c1.execute(
-                    f"SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL {level_sql}"
-                )
-            with self.conn2.cursor() as c2:
-                c2.execute(
-                    f"SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL {level_sql}"
-                )
-            
-            self.conn1.commit()
-            self.conn2.commit()
-        except Exception:
-            self.conn1.rollback()
-            self.conn2.rollback()
-            raise
-
-        self.cur1 = self.conn1.cursor()
-        self.cur2 = self.conn2.cursor()
+    def __init__(
+        self,
+        dsn: Optional[str] = None,
+        isolation_level: str = "READ COMMITTED",
+        adapter: Optional[DatabaseAdapter] = None,
+    ) -> None:
+        if adapter is not None:
+            self._adapter = adapter
+            self.dsn = getattr(adapter, "dsn", dsn or "")
+        else:
+            if dsn is None:
+                raise ValueError("LitmusTester requires dsn or adapter")
+            from adapters import PostgresAdapter
+            self._adapter = PostgresAdapter(dsn, isolation_level=isolation_level)
+            self.dsn = dsn
+        self._adapter.connect()
+        self.conn1 = self._adapter.conn1
+        self.cur1 = self._adapter.cur1
+        self.conn2 = self._adapter.conn2
+        self.cur2 = self._adapter.cur2
 
     def setup_db(self) -> None:
-        """
-        Reset the `kv` table and seed keys 1 and 2 with value 0.
-        """
-        try:
-            self.cur1.execute("TRUNCATE TABLE kv")
-            self.cur1.execute("INSERT INTO kv (k, v) VALUES (1, 0), (2, 0)")
-            self.conn1.commit()
-        except Exception:
-            self.conn1.rollback()
-            raise
+        """Reset the kv table and seed keys 1 and 2 with value 0."""
+        self._adapter.setup_schema()
 
     def teardown(self) -> None:
         """Close cursors and connections, ignoring any cleanup errors."""
-        for cur in (getattr(self, "cur1", None), getattr(self, "cur2", None)):
-            try:
-                if cur is not None:
-                    cur.close()
-            except Exception:
-                pass
-
-        for conn in (getattr(self, "conn1", None), getattr(self, "conn2", None)):
-            try:
-                if conn is not None and not conn.closed:
-                    conn.close()
-            except Exception:
-                pass
+        self._adapter.teardown()
 
     def report(self, anomaly_name: str, result_bool: bool, message: str) -> None:
-
         status = f"{GREEN}PASS (Safe){RESET}" if result_bool else f"{RED}FAIL (Vulnerable){RESET}"
         print(f"[{anomaly_name}] {status} - {message}")
 
+    def run_test(
+        self,
+        test_name: str,
+        schedule: Optional[Sequence[float]] = None,
+    ) -> List[Any]:
+        """
+        Run a litmus scenario with optional delay schedule; return final DB state.
+        Does setup_db() and injects time.sleep(schedule[i]) at each step. Does not teardown.
+        """
+        if test_name == "lost_update":
+            return self._run_lost_update(schedule or [])
+        raise ValueError(f"Unknown test_name for run_test: {test_name!r}")
+
+    def _run_lost_update(self, schedule: Sequence[float]) -> List[Any]:
+        """G1 Lost Update with injectable delays; returns rows from SELECT * FROM kv."""
+        self.setup_db()
+        adapter = self._adapter
+        delays = list(schedule)
+        idx = 0
+
+        def _sleep() -> None:
+            nonlocal idx
+            if idx < len(delays):
+                time.sleep(delays[idx])
+            idx += 1
+
+        _sleep()
+        self.cur1.execute("BEGIN")
+        _sleep()
+        self.cur2.execute("BEGIN")
+        _sleep()
+        adapter.read(1, conn_id=1)
+        _sleep()
+        adapter.write(1, 10, conn_id=2)
+        _sleep()
+        self.conn2.commit()
+        _sleep()
+        try:
+            adapter.write(1, 1, conn_id=1)
+            self.conn1.commit()
+        except Exception:
+            self.conn1.rollback()
+
+        # Fresh read of full kv state (committed view)
+        self.conn1.autocommit = True
+        try:
+            with self.conn1.cursor() as c:
+                c.execute("SELECT k, v FROM kv ORDER BY k")
+                rows = c.fetchall()
+            return list(rows) if rows else []
+        finally:
+            self.conn1.autocommit = False

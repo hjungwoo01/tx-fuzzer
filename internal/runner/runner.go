@@ -42,7 +42,7 @@ func Run(ctx context.Context, env *Env) error {
 	clients := env.Cfg.Scheduling.Clients
 	limit := env.Cfg.Scheduling.Limit
 	var txCount atomic.Int64
-	
+
 	var duration time.Duration
 	if limit > 0 {
 		duration = 24 * time.Hour
@@ -78,7 +78,7 @@ func Run(ctx context.Context, env *Env) error {
 				if limit > 0 && txCount.Load() >= int64(limit) {
 					break
 				}
-				
+
 				if !time.Now().Before(end) {
 					break
 				}
@@ -137,7 +137,10 @@ func Run(ctx context.Context, env *Env) error {
 						_ = bar.Await(200 * time.Millisecond)
 					}
 
-					args := workload.MaterializeArgs(qp.ArgsSpec, prevArgs)
+					args := workload.MaterializeArgs(qp.ArgsSpec, prevArgs, workload.MaterializeContext{
+						Process: process,
+						TxnID:   txnID,
+					})
 					overrideLiteralArgs(args, qp.Template.Args)
 
 					stepIndex := qi + 1

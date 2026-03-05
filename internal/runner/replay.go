@@ -216,7 +216,10 @@ func (s *replayTxnState) runSingleStep(env *Env) error {
 	qp := s.plan.Queries[s.stepIndex]
 	st := qp.Template
 	gen := qp.ArgsSpec
-	args := workload.MaterializeArgs(gen, s.stepVals)
+	args := workload.MaterializeArgs(gen, s.stepVals, workload.MaterializeContext{
+		Process: s.process,
+		TxnID:   s.txnID,
+	})
 	overrideLiteralArgs(args, st.Args)
 
 	stepIndex := s.stepIndex + 1

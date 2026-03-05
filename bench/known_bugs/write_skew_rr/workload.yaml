@@ -1,0 +1,23 @@
+name: write_skew_rr
+scenario: write_skew_on_call
+description: >-
+  Two concurrent doctors each check the on-call count and independently decide
+  they can go off-call. Under snapshot isolation (PostgreSQL REPEATABLE READ),
+  both can commit and violate the invariant "at least one doctor is on call".
+isolation_level: REPEATABLE READ
+clients: 2
+ops_per_client: 4
+concurrency: 2
+timing_model:
+  baseline_delays_ms:
+    - [0, 20, 0, 0]
+    - [0, 0, 0, 0]
+  tool:
+    max_delay_ms: 35
+    mutation_jitter_ms: 6
+    conflict_steps: [1, 2]
+expected:
+  classification: known_anomaly_under_weaker_isolation
+  invariant: at_least_one_on_call
+  expected_outcome: anomaly_possible_under_repeatable_read
+  stronger_setting: SERIALIZABLE should reject one transaction (often SQLSTATE 40001)

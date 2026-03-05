@@ -1,0 +1,217 @@
+# Quick evaluation suite — runs in ~10-20 minutes
+# Repetitions: 3 per experiment for statistical significance
+# Budgets: small (100 baseline, 200 heuristic)
+# Includes: K sweep, ablations on headline workloads; sanity checks
+
+base_seed: 42
+repetitions: 3
+
+experiments:
+  # ══════════════════════════════════════════════════════════════════
+  # HEADLINE WORKLOADS — full strategy matrix
+  # ══════════════════════════════════════════════════════════════════
+
+  # ── (1) SSI update-conflict-out: 12.3 (vulnerable) ──
+  - workload: update_conflict_out
+    variants: ["update"]
+    isolation_levels: ["SERIALIZABLE"]
+    pg_versions: ["12.3"]
+    fixed_dsn: "postgres://postgres:postgres@localhost:54324/postgres?sslmode=disable"
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: random_delays
+        trials: 100
+        k: 3
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+      # Ablation: no commit_hold
+      - name: heuristic_no_commit_hold
+        budget: 200
+        k: 3
+        disable_commit_hold: true
+      # Ablation: only commit_hold + fallback (no key-based tiers)
+      - name: heuristic_no_key_tiers
+        budget: 200
+        k: 3
+        disable_key_tiers: true
+      # K sweep
+      - name: heuristic_k1
+        budget: 200
+        k: 1
+      - name: heuristic_k2
+        budget: 200
+        k: 2
+
+  # ── (1b) SSI update-conflict-out: 12.4 (fixed, negative control) ──
+  - workload: update_conflict_out
+    variants: ["update"]
+    isolation_levels: ["SERIALIZABLE"]
+    pg_versions: ["12.4"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3
+
+  # ── (5) Job-queue double claim: 16.2 READ COMMITTED ──
+  - workload: job_queue_double_claim
+    variants: ["buggy"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: random_delays
+        trials: 100
+        k: 3
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+      # Ablation: no commit_hold
+      - name: heuristic_no_commit_hold
+        budget: 200
+        k: 3
+        disable_commit_hold: true
+      # K sweep
+      - name: heuristic_k1
+        budget: 200
+        k: 1
+      - name: heuristic_k2
+        budget: 200
+        k: 2
+
+  # ── (5b) Job-queue double claim: fixed variant (negative control) ──
+  - workload: job_queue_double_claim
+    variants: ["fixed"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3
+
+  # ══════════════════════════════════════════════════════════════════
+  # SANITY WORKLOADS — baseline + heuristic only, confirm direction
+  # ══════════════════════════════════════════════════════════════════
+
+  # ── (2) Write skew (doctors) on 16.2 ──
+  - workload: doctors_write_skew
+    variants: ["buggy"]
+    isolation_levels: ["REPEATABLE READ"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: random_delays
+        trials: 100
+        k: 3
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+
+  # ── (2b) Write skew (doctors) SERIALIZABLE — expect 40001 ──
+  - workload: doctors_write_skew
+    variants: ["buggy"]
+    isolation_levels: ["SERIALIZABLE"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3
+
+  # ── (2c) Write skew (doctors) fixed variant (naive FOR UPDATE) — reference ──
+  - workload: doctors_write_skew
+    variants: ["fixed"]
+    isolation_levels: ["REPEATABLE READ"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3
+
+  # ── (2d) Write skew (doctors) fixed_ordered_locks — no deadlocks ──
+  - workload: doctors_write_skew
+    variants: ["fixed_ordered_locks"]
+    isolation_levels: ["REPEATABLE READ"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+
+  # ── (3) Bank lost update on 16.2 READ COMMITTED ──
+  - workload: bank_lost_update
+    variants: ["buggy"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: random_delays
+        trials: 100
+        k: 3
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+
+  # ── (3b) Bank lost update: fixed variant (negative control) ──
+  - workload: bank_lost_update
+    variants: ["fixed"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3
+
+  # ── (4) Inventory oversell on 16.2 READ COMMITTED ──
+  - workload: inventory_oversell
+    variants: ["buggy"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 100
+      - name: random_delays
+        trials: 100
+        k: 3
+      - name: heuristic_fuzzer
+        budget: 200
+        k: 3
+
+  # ── (4b) Inventory oversell: fixed variant (negative control) ──
+  - workload: inventory_oversell
+    variants: ["fixed"]
+    isolation_levels: ["READ COMMITTED"]
+    pg_versions: ["16.2"]
+    replay_count: 3
+    strategies:
+      - name: baseline_no_delays
+        trials: 50
+      - name: heuristic_fuzzer
+        budget: 100
+        k: 3

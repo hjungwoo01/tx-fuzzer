@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ const (
 	RandInt
 	NowNS
 	Choice
+	TxWriteID
 	RefArg
 )
 
@@ -121,6 +123,10 @@ func ParseArg(a any) GenSpec {
 		if _, ok := t["now_ns"]; ok {
 			return GenSpec{Kind: NowNS}
 		}
+		// tx_write_id: {}
+		if _, ok := t["tx_write_id"]; ok {
+			return GenSpec{Kind: TxWriteID}
+		}
 		// choice: {from: [...]}
 		if v, ok := t["choice"]; ok {
 			if m, ok := v.(map[string]any); ok {
@@ -134,7 +140,12 @@ func ParseArg(a any) GenSpec {
 	return GenSpec{Kind: Lit}
 }
 
-func MaterializeArgs(specs []GenSpec, prev []any) []any {
+type MaterializeContext struct {
+	Process int
+	TxnID   string
+}
+
+func MaterializeArgs(specs []GenSpec, prev []any, ctx MaterializeContext) []any {
 	out := make([]any, 0, len(specs))
 	for _, s := range specs {
 		switch s.Kind {
@@ -160,6 +171,9 @@ func MaterializeArgs(specs []GenSpec, prev []any) []any {
 				out = append(out, s.Choices[rand.IntN(len(s.Choices))])
 			}
 
+		case TxWriteID:
+			out = append(out, makeTxWriteID(ctx.Process, ctx.TxnID))
+
 		case RefArg:
 			// "$3" etc. from previous step's materialized args
 			idx := 0
@@ -172,6 +186,31 @@ func MaterializeArgs(specs []GenSpec, prev []any) []any {
 		}
 	}
 	return out
+}
+
+func makeTxWriteID(process int, txnID string) int64 {
+	const seqMask int64 = (1 << 48) - 1
+	seq := parseTxnSequence(txnID)
+	if seq <= 0 {
+		seq = time.Now().UnixNano() & seqMask
+	}
+	proc := int64(process) & 0x7fff
+	return (proc << 48) | (seq & seqMask)
+}
+
+func parseTxnSequence(txnID string) int64 {
+	raw := strings.TrimSpace(txnID)
+	if raw == "" {
+		return 0
+	}
+	if strings.HasPrefix(raw, "tx-") {
+		raw = strings.TrimPrefix(raw, "tx-")
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 type TxnPlan struct {

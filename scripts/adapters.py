@@ -30,6 +30,11 @@ except ImportError:
     MySQLCursor = None
 
 try:
+    import sqlite3
+except ImportError:
+    sqlite3 = None
+
+try:
     import redis
 except ImportError:
     redis = None
@@ -415,29 +420,146 @@ class MySQLAdapter(DatabaseAdapter):
                 pass
 
 
-# --- TiDB ---------------------------------------------------------------------
+# --- SQLite ------------------------------------------------------------------
 
-class TiDBAdapter(MySQLAdapter):
-    """
-    TiDB backend (MySQL-compatible). Extends MySQLAdapter with TiDB-specific
-    session settings to make tests harder: enable txn auto-retry and set
-    isolation read engines to tikv,tiflash.
-    """
+class SQLiteAdapter(DatabaseAdapter):
+    """SQLite backend using stdlib sqlite3 with file-backed database for concurrency tests."""
+
+    def __init__(
+        self,
+        dsn: str,
+        isolation_level: str = "READ COMMITTED",
+        logger: Optional["HistoryLogger"] = None,
+        busy_timeout_ms: int = 5000,
+        journal_mode: str = "WAL",
+        synchronous: str = "NORMAL",
+    ) -> None:
+        if sqlite3 is None:
+            raise RuntimeError("sqlite3 stdlib module is required for SQLiteAdapter.")
+        self.dsn = dsn
+        self._isolation_level = isolation_level
+        self._logger = logger
+        self._busy_timeout_ms = int(max(0, busy_timeout_ms))
+        self._journal_mode = journal_mode
+        self._synchronous = synchronous
+        self.conn1 = None
+        self.conn2 = None
+        self.cur1 = None
+        self.cur2 = None
+
+    def _parse_dsn(self) -> tuple[str, bool]:
+        raw = (self.dsn or "").strip()
+        if not raw:
+            raise ValueError("SQLite DSN/path must not be empty")
+
+        # Accept:
+        # - file:/tmp/db.sqlite?cache=shared   (URI mode)
+        # - sqlite:///tmp/db.sqlite            (path mode)
+        # - sqlite://file:/tmp/db.sqlite?...   (URI mode)
+        # - /tmp/db.sqlite                     (path mode)
+        if raw.startswith("file:"):
+            return (raw, True)
+        if raw.startswith("sqlite://file:"):
+            return (raw[len("sqlite://") :], True)
+        if raw.startswith("sqlite:///"):
+            return (raw[len("sqlite:///") :], False)
+        if raw.startswith("sqlite://"):
+            return (raw[len("sqlite://") :], False)
+        return (raw, False)
+
+    def _apply_pragmas(self, conn: Any) -> None:
+        c = conn.cursor()
+        try:
+            c.execute(f"PRAGMA busy_timeout = {self._busy_timeout_ms}")
+            if self._journal_mode:
+                c.execute(f"PRAGMA journal_mode = {self._journal_mode}")
+            if self._synchronous:
+                c.execute(f"PRAGMA synchronous = {self._synchronous}")
+        finally:
+            try:
+                c.close()
+            except Exception:
+                pass
+        conn.commit()
 
     def connect(self) -> None:
-        super().connect()
-        self._setup_tidb_session()
+        db_path, use_uri = self._parse_dsn()
+        kwargs = {
+            "database": db_path,
+            "uri": use_uri,
+            "check_same_thread": False,
+            "timeout": max(0.0, self._busy_timeout_ms / 1000.0),
+            # Manual transaction control via explicit BEGIN/COMMIT in runners.
+            "isolation_level": None,
+        }
+        self.conn1 = sqlite3.connect(**kwargs)
+        self.conn2 = sqlite3.connect(**kwargs)
+        self._apply_pragmas(self.conn1)
+        self._apply_pragmas(self.conn2)
+        self.cur1 = self.conn1.cursor()
+        self.cur2 = self.conn2.cursor()
+        if self._logger is not None:
+            self.conn1 = _LoggingConn(self.conn1, "T1", self._logger)
+            self.conn2 = _LoggingConn(self.conn2, "T2", self._logger)
+            self.cur1 = _LoggingCursor(self.cur1, "T1", self._logger)
+            self.cur2 = _LoggingCursor(self.cur2, "T2", self._logger)
 
-    def _setup_tidb_session(self) -> None:
-        """Apply TiDB-specific session settings on both connections."""
-        commands = [
-            "SET SESSION tidb_disable_txn_auto_retry = OFF",
-            "SET SESSION tidb_isolation_read_engines = 'tikv,tiflash'",
-        ]
+    def setup_schema(self, key_count: int = 2) -> None:
+        self.cur1.execute(
+            "CREATE TABLE IF NOT EXISTS kv ("
+            "k INTEGER PRIMARY KEY, "
+            "v INTEGER NOT NULL, "
+            "ts INTEGER NOT NULL DEFAULT 0"
+            ")"
+        )
+        self.conn1.commit()
+        self.cur1.execute("DELETE FROM kv")
+        values = [(i, 0, 0) for i in range(1, key_count + 1)]
+        self.cur1.executemany("INSERT INTO kv (k, v, ts) VALUES (?, ?, ?)", values)
+        self.conn1.commit()
+
+    def ensure_key(self, key: int, value: int) -> None:
+        self.cur1.execute("BEGIN")
+        self.cur1.execute(
+            "INSERT OR IGNORE INTO kv (k, v, ts) VALUES (?, ?, 0)",
+            (key, value),
+        )
+        self.conn1.commit()
+
+    def read(self, key: int, conn_id: int = 1) -> int:
+        c = self._cursor(conn_id)
+        client_id = self._client_id(conn_id)
+        if self._logger:
+            self._logger.log(client_id, "INVOKE", f"READ Key={key}")
+        c.execute("SELECT v FROM kv WHERE k = ?", (key,))
+        row = c.fetchone()
+        v = int(row[0]) if row is not None else 0
+        if self._logger:
+            self._logger.log(client_id, "OK", f"RETURNED {v}")
+        return v
+
+    def write(self, key: int, val: int, conn_id: int = 1) -> None:
+        c = self._cursor(conn_id)
+        client_id = self._client_id(conn_id)
+        if self._logger:
+            self._logger.log(client_id, "INVOKE", f"WRITE Key={key}={val}")
+        c.execute("UPDATE kv SET v = ? WHERE k = ?", (val, key))
+        if self._logger:
+            self._logger.log(client_id, "OK", f"WRITE Key={key}={val}")
+
+    def teardown(self) -> None:
+        for cur in (self.cur1, self.cur2):
+            try:
+                if cur is not None:
+                    cur.close()
+            except Exception:
+                pass
         for conn in (self.conn1, self.conn2):
-            with conn.cursor() as c:
-                for sql in commands:
-                    c.execute(sql)
+            try:
+                if conn is not None:
+                    conn.close()
+            except Exception:
+                pass
 
 
 # --- Redis --------------------------------------------------------------------

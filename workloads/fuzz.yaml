@@ -20,14 +20,13 @@ workload:
       isolation: "READ COMMITTED"
       timeout: "2s"
       steps:
-        - sql: "UPDATE kv SET v=$1, ts=$2 WHERE k=$3"
+        - sql: "UPDATE kv SET v=$1 WHERE k=$2"
           args:
-            - rand_int: {min: 0, max: 1000000}
-            - now_ns: {}
+            - tx_write_id: {}
             - rand_int: {min: 1, max: 100}
-          elle: {f: ":write", key: "$3"}
+          elle: {f: ":write", key: "$2"}
         - sql: "SELECT v FROM kv WHERE k=$1"
-          args: ["$3"]
+          args: ["$2"]
           elle: {f: ":read", key: "$1", value_from_result_col: 0}
 
     - name: read-two

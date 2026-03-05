@@ -1,0 +1,23 @@
+name: lost_update_rc
+scenario: lost_update_naive_increment
+description: >-
+  Two concurrent transactions perform a read-modify-write increment with
+  application-side arithmetic under READ COMMITTED. Without explicit locking,
+  one increment can be lost.
+isolation_level: READ COMMITTED
+clients: 2
+ops_per_client: 4
+concurrency: 2
+timing_model:
+  baseline_delays_ms:
+    - [0, 0, 0, 0]
+    - [0, 24, 0, 0]
+  tool:
+    max_delay_ms: 35
+    mutation_jitter_ms: 6
+    conflict_steps: [1, 2]
+expected:
+  classification: known_anomaly_under_weaker_isolation
+  invariant: counter_value_should_equal_2_after_two_increments
+  expected_outcome: lost_update_possible_with_naive_read_modify_write
+  stronger_setting: SELECT FOR UPDATE or SERIALIZABLE prevents anomaly

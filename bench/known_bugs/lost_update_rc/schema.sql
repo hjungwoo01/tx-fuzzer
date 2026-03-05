@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS counters;
+
+CREATE TABLE counters (
+  id INTEGER PRIMARY KEY,
+  value INTEGER NOT NULL
+);

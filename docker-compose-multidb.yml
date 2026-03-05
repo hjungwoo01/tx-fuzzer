@@ -1,0 +1,150 @@
+# Multi-DB evaluation docker-compose.
+# Start:  docker compose -f docker-compose-multidb.yml up -d
+# Stop:   docker compose -f docker-compose-multidb.yml down -v
+#
+# Pinned versions:
+#   Postgres 12.3 (update_conflict_out vulnerable)
+#   Postgres 12.4 (update_conflict_out fixed)
+#   Postgres 16.2 (modern baseline)
+#   MySQL 5.6.51 (Bug #76927 vulnerable — REPLACE unique secondary index)
+#   MySQL 5.7.44 (Bug #76927 fixed — fix landed in 5.7.9)
+#   MySQL 8.0.34  (Jepsen NRR case study)
+#   SQLite uses host stdlib (print version at runtime)
+
+services:
+  pg12_3:
+    image: postgres:12.3
+    container_name: txf_pg12_3
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "54323:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "fsync=off"
+      - "-c"
+      - "full_page_writes=off"
+      - "-c"
+      - "max_connections=50"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  pg12_4:
+    image: postgres:12.4
+    container_name: txf_pg12_4
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "54324:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "fsync=off"
+      - "-c"
+      - "full_page_writes=off"
+      - "-c"
+      - "max_connections=50"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  pg16_2:
+    image: postgres:16.2
+    container_name: txf_pg16_2
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "54326:5432"
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
+      - "-c"
+      - "fsync=off"
+      - "-c"
+      - "max_connections=50"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  mysql8_0_34:
+    image: mysql:8.0.34
+    container_name: txf_mysql8_0_34
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "33080:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # MySQL 5.6.51 — Bug #76927 vulnerable (REPLACE INTO unique secondary index)
+  # Bug was fixed in 5.7.9; 5.6.x line never received the fix.
+  mysql5_6_vulnerable:
+    image: mysql:5.6
+    container_name: txf_mysql5_6_vulnerable
+    command:
+      - "--transaction-isolation=READ-COMMITTED"
+      - "--innodb-flush-log-at-trx-commit=0"
+      - "--sync-binlog=0"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "33078:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # MySQL 5.7.44 — Bug #76927 fixed (fix landed in 5.7.9)
+  mysql5_7_fixed:
+    image: mysql:5.7
+    container_name: txf_mysql5_7_fixed
+    command:
+      - "--transaction-isolation=READ-COMMITTED"
+      - "--innodb-flush-log-at-trx-commit=0"
+      - "--sync-binlog=0"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "33079:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
