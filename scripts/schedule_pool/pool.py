@@ -48,7 +48,7 @@ class PoolConfig:
     replay_threshold: float = 0.9  # min buggy replay rate for bonus
     compact_bonus: float = 1.5     # bonus for low delay_count bug schedules
     compact_threshold: int = 4     # max delay_count for compact bonus
-    empty_schedule_prob: float = 0.15
+    fresh_seed_prob: float = 0.15  # prob of generating a fresh seed (no pool parent)
     # Exploit phase: bias toward bug-producing parents
     exploit_bug_parent_prob: float = 0.6  # P(sample from bug schedules) in exploit
 
@@ -128,11 +128,12 @@ class SchedulePool:
         In EXPLOIT phase, preferentially samples from bug-producing schedules
         to enable focused mutation around known bug triggers.
 
-        Returns None to signal "use empty schedule" (with probability
-        empty_schedule_prob, or if the pool is empty).
+        Returns None to signal "generate a fresh seed from the base
+        strategy" (with probability fresh_seed_prob, or if the pool
+        is empty).
         """
-        # With some probability, return None → empty schedule
-        if rng.random() < self._config.empty_schedule_prob:
+        # With some probability, return None → caller uses base strategy seed
+        if rng.random() < self._config.fresh_seed_prob:
             return None
 
         candidates = self._filter(workload=workload, db=db, variant=variant)

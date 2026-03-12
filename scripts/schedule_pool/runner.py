@@ -43,6 +43,7 @@ from .event_id import get_workload_event_ids
 from .pool import PoolConfig, SchedulePool
 from .mutator import MutationConfig, ScheduleMutator
 from .retention import RetentionPolicy, RetentionReason
+from .base_strategy import BaseStrategy, RandomStrategy
 
 
 class SchedulePoolRunner:
@@ -194,6 +195,7 @@ def run_pool_search(
     pool: Optional[SchedulePool] = None,
     pool_config: Optional[PoolConfig] = None,
     mutation_config: Optional[MutationConfig] = None,
+    base_strategy: Optional[BaseStrategy] = None,
     sample_interval_s: float = 0.5,
     rep: int = 0,
     stabilize_replays: int = 10,
@@ -203,11 +205,17 @@ def run_pool_search(
     """
     Run pool-based schedule search for duration_s.
 
+    The pool is an orthogonal extension layer. When no parent is sampled
+    from the pool, a fresh schedule is generated via base_strategy
+    (default: RandomStrategy).  Mutation then refines the seed.
+
     Dual-objective: explores canonical state space, then after first bug hit,
     switches to EXPLOIT phase and runs post-hit stabilization to measure
     replay rate and find more stable/compact bug triggers.
 
     Args:
+        base_strategy: Strategy for generating fresh seed schedules.
+                       Defaults to RandomStrategy(max_delay_ms=100).
         stabilize_replays: number of exact replays after first bug hit
         stabilize_mutations: number of focused mutations after first bug hit
 
@@ -215,6 +223,10 @@ def run_pool_search(
     """
     wl = MICRO_WORKLOADS[workload_name]
     rng = _random.Random(seed)
+
+    # Base strategy for fresh seeds (orthogonal design)
+    if base_strategy is None:
+        base_strategy = RandomStrategy(max_delay_ms=100.0)
 
     # Initialize pool
     if pool is None:
@@ -254,9 +266,9 @@ def run_pool_search(
     last_sample = start
 
     while (time.monotonic() - start) < duration_s:
-        # 1. Sample or empty
+        # 1. Sample or fresh seed from base strategy
         parent_record = pool.sample(rng, workload=workload_name, db=db)
-        parent_schedule = parent_record.schedule if parent_record else Schedule.empty()
+        parent_schedule = parent_record.schedule if parent_record else base_strategy.seed(all_events, rng)
         parent_id = parent_record.schedule_id if parent_record else None
 
         # 2. Mutate

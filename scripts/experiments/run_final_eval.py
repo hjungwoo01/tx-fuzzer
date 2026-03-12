@@ -60,6 +60,7 @@ from scripts.schedule_pool import (
     make_event_id,
     make_trial_event_ids,
 )
+from scripts.schedule_pool.base_strategy import BaseStrategy, RandomStrategy
 from scripts.schedule_pool.pool import PoolConfig
 from scripts.schedule_pool.runner import (
     SchedulePoolRunner,
@@ -837,11 +838,16 @@ def run_case_pool_search(
     hot_events: Optional[List[str]] = None,
     mutation_config: Optional[MutationConfig] = None,
     pool_config: Optional[PoolConfig] = None,
+    base_strategy: Optional[BaseStrategy] = None,
     stabilize_replays: int = 10,
     stabilize_mutations: int = 5,
 ) -> CasePoolResult:
     """
     Run schedule_pool discovery loop for a case study.
+
+    The pool is an orthogonal extension layer.  When no parent is sampled
+    from the pool, a fresh schedule is generated via *base_strategy*
+    (default: RandomStrategy).  Mutation then refines the seed.
 
     After first bug hit, runs post-hit stabilization:
       1) Exact replays to measure replay rate
@@ -852,6 +858,10 @@ def run_case_pool_search(
     rng = random.Random(seed)
     if pool is None:
         pool = SchedulePool(config=pool_config or PoolConfig())
+
+    # Base strategy for fresh seeds (orthogonal design)
+    if base_strategy is None:
+        base_strategy = RandomStrategy(max_delay_ms=100.0)
 
     mutator = ScheduleMutator(
         all_event_ids=event_ids,
@@ -873,9 +883,9 @@ def run_case_pool_search(
 
     start = time.monotonic()
     while (time.monotonic() - start) < duration_s:
-        # Sample or empty
+        # Sample or fresh seed from base strategy
         parent_record = pool.sample(rng, workload=case_name, db=db)
-        parent_schedule = parent_record.schedule if parent_record else Schedule.empty()
+        parent_schedule = parent_record.schedule if parent_record else base_strategy.seed(event_ids, rng)
         parent_id = parent_record.schedule_id if parent_record else None
 
         # Mutate

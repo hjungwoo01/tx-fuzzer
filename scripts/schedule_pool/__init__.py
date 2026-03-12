@@ -11,6 +11,7 @@ from .event_id import make_event_id, make_trial_event_ids
 from .pool import SchedulePool, PoolConfig, SearchPhase
 from .mutator import ScheduleMutator, MutationConfig
 from .retention import RetentionPolicy, RetentionReason
+from .base_strategy import BaseStrategy, RandomStrategy, HeuristicStrategy, EmptyStrategy
 
 __all__ = [
     "Schedule",
@@ -25,4 +26,8 @@ __all__ = [
     "MutationConfig",
     "RetentionPolicy",
     "RetentionReason",
+    "BaseStrategy",
+    "RandomStrategy",
+    "HeuristicStrategy",
+    "EmptyStrategy",
 ]
