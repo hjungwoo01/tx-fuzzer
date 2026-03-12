@@ -46,7 +46,6 @@ WORKLOAD_META = {
     "negative_controls": ["Run on 12.4 — should always get 40001 or non-cyclic ordering"],
 }
 
-# ── Schema ──────────────────────────────────────────────────────────────────
 
 def setup_sql() -> List[str]:
     return [
@@ -60,8 +59,6 @@ def setup_sql() -> List[str]:
 def truncate_sql() -> List[str]:
     return ["DELETE FROM txn1", "DELETE FROM txn0"]
 
-
-# ── Seed trace ──────────────────────────────────────────────────────────────
 
 SESSION_FOO = [
     ("foo_begin",  "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"),
@@ -127,8 +124,6 @@ def seed_trace(
             })
     return trace
 
-
-# ── Concurrent trial runner ─────────────────────────────────────────────────
 
 @dataclass
 class TrialResult:
@@ -255,8 +250,6 @@ def run_trial(dsn: str, variant: str = "update", delays: Optional[Dict[str, floa
     return result
 
 
-# ── Canonical state (for deterministic hashing) ────────────────────────────
-
 def canonical_state(trial_result) -> Dict[str, Any]:
     """Return a timing-free logical snapshot suitable for hashing.
 
@@ -277,8 +270,6 @@ def canonical_state(trial_result) -> Dict[str, Any]:
         "variant": r.variant,
     }
 
-
-# ── Anti-dependency analysis (for heuristic delay injection) ────────────────
 
 def _extract_table_key(sql: str):
     import re
@@ -378,7 +369,7 @@ def build_delay_candidates(trace: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def select_delays(candidates: List[Dict[str, Any]], rng: random.Random, k: int = 2) -> Dict[str, float]:
-    """Weighted lottery selection of up to K delay points."""
+    """Sample up to K delay points from candidates, weighted by tier priority."""
     if not candidates or k <= 0:
         return {}
     pool = []
@@ -398,7 +389,7 @@ def select_delays(candidates: List[Dict[str, Any]], rng: random.Random, k: int =
 
 
 def select_random_delays(trace: List[Dict[str, Any]], rng: random.Random, k: int = 2) -> Dict[str, float]:
-    """Random baseline: pick K random events, random delay 10-200ms."""
+    """Pick K random events with uniform delays in [10, 200] ms."""
     eids = [ev.get("event_id", f"step_{i}") for i, ev in enumerate(trace)
             if ev.get("type") in ("sql", "begin", "commit", "rollback")]
     if not eids:
@@ -410,8 +401,6 @@ def select_random_delays(trace: List[Dict[str, Any]], rng: random.Random, k: int
             selected[eid] = round(rng.uniform(0.01, 0.20), 3)
     return selected
 
-
-# ── Oracle ──────────────────────────────────────────────────────────────────
 
 def oracle(
     execution_history: List[Dict[str, Any]],

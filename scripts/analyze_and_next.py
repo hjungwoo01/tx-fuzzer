@@ -56,7 +56,6 @@ def extract_elle_model(workload_path: Path) -> str:
         }
         if model_str in model_aliases:
             return model_aliases[model_str]
-        # Return as-is if it looks valid
         return model_str
     
     # Fall back to isolation level extraction
@@ -73,7 +72,6 @@ def extract_isolation_level(workload_path: Path) -> Optional[str]:
     if not transactions:
         return None
     
-    # Get the first transaction's isolation level
     for txn in transactions:
         isolation = txn.get("isolation")
         if isolation:

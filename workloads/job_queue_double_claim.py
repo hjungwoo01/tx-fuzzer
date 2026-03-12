@@ -62,8 +62,6 @@ NUM_JOBS = 1
 NUM_WORKERS = 2
 
 
-# ── Schema ──────────────────────────────────────────────────────────────────
-
 def setup_sql() -> List[str]:
     return [
         "DROP TABLE IF EXISTS jobs CASCADE",
@@ -80,8 +78,6 @@ def _init_sql(num_jobs: int = NUM_JOBS) -> List[str]:
 def truncate_sql() -> List[str]:
     return ["DELETE FROM jobs"]
 
-
-# ── Seed trace ──────────────────────────────────────────────────────────────
 
 def seed_trace(
     clients: int = NUM_WORKERS,
@@ -112,8 +108,6 @@ def seed_trace(
     return trace
 
 
-# ── Canonical state ─────────────────────────────────────────────────────────
-
 def canonical_state(trial_result: Dict[str, Any]) -> Dict[str, Any]:
     """Return timing-free logical snapshot for hashing."""
     fs = trial_result.get("final_state", {})
@@ -123,8 +117,6 @@ def canonical_state(trial_result: Dict[str, Any]) -> Dict[str, Any]:
         "job_states": fs.get("job_states", []),
     }
 
-
-# ── Concurrent trial runner ─────────────────────────────────────────────────
 
 def run_trial(
     dsn: str,
@@ -153,7 +145,6 @@ def run_trial(
     }
     lock = threading.Lock()
 
-    # Setup
     conn_s = psycopg2.connect(dsn)
     conn_s.autocommit = True
     cur_s = conn_s.cursor()
@@ -389,8 +380,6 @@ def run_trial(
     return result
 
 
-# ── Anti-dependency analysis (for heuristic delay injection) ────────────────
-
 def build_delay_candidates(
     trace: List[Dict[str, Any]],
     clients: int = NUM_WORKERS,
@@ -437,7 +426,7 @@ def select_delays(
     rng: random.Random,
     k: int = 3,
 ) -> Dict[str, float]:
-    """Weighted lottery selection of up to K delay points."""
+    """Sample up to K delay points from candidates, weighted by tier priority."""
     if not candidates or k <= 0:
         return {}
     pool = []
@@ -461,7 +450,7 @@ def select_random_delays(
     rng: random.Random,
     k: int = 3,
 ) -> Dict[str, float]:
-    """Random baseline: pick K random events, random delay 10–200ms."""
+    """Pick K random events with uniform delays in [10, 200] ms."""
     eids = [ev.get("event_id", f"step_{i}") for i, ev in enumerate(trace)
             if ev.get("type") in ("sql", "begin", "commit", "rollback")]
     if not eids:
@@ -473,8 +462,6 @@ def select_random_delays(
             selected[eid] = round(rng.uniform(0.01, 0.20), 3)
     return selected
 
-
-# ── Oracle ──────────────────────────────────────────────────────────────────
 
 def oracle(
     execution_history: List[Dict[str, Any]],

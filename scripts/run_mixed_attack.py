@@ -124,8 +124,6 @@ class AttackInjector:
     def _ser_fail(self, exc: BaseException) -> bool:
         return _is_serialization_or_lock_failure(exc, self._target)
 
-    # --- Individual anomaly patterns -------------------------------------------------
-
     def _attack_g1_lost_update(self) -> bool:
         """
         Lost Update (G1) against `target_key`.

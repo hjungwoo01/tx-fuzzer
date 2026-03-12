@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # discover_update_conflict_out.sh — Full discovery + cross-version validation
 #
-# This script demonstrates:
-# 1) Starts postgres:12.3 (vulnerable) and postgres:12.4 (fixed) containers
-# 2) Runs baseline stats on both (no delays) — shows "OS hides the bug"
-# 3) Runs discovery campaign on 12.3 — fuzzer discovers the anomaly
-# 4) Replays the found trace on 12.3 to confirm reproducibility
-# 5) Replays the same trace on 12.4 to confirm the fix
-# 6) Prints a clear summary
+# Pipeline:
+# 1) Start postgres:12.3 (vulnerable) and postgres:12.4 (fixed) containers
+# 2) Run baseline stats on both (no delays) — shows OS hides the bug
+# 3) Run discovery campaign on 12.3 — fuzzer discovers the anomaly
+# 4) Replay found trace on 12.3 to confirm reproducibility
+# 5) Replay same trace on 12.4 to confirm the fix
+# 6) Print summary
 #
 # Usage:
 #   ./scripts/discover_update_conflict_out.sh
@@ -35,7 +35,7 @@ echo -e "${BOLD}  PostgreSQL SSI update-conflict-out Discovery Demo${NC}"
 echo -e "${BOLD}  Variant: ${VARIANT} | K: ${K} | Budget: ${BUDGET}${NC}"
 echo -e "${BOLD}============================================================${NC}"
 
-# --- Step 0: Start containers ---
+# Step 0: Start containers
 echo ""
 echo -e "${YELLOW}Step 0: Starting PostgreSQL containers...${NC}"
 docker compose -f docker-compose-repro.yml up -d 2>/dev/null || \
@@ -70,7 +70,7 @@ done
 
 mkdir -p "$RESULTS_DIR"
 
-# --- Step 1: Baseline on 12.3 (no delays) ---
+# Step 1: Baseline on 12.3 (no delays)
 echo ""
 echo -e "${YELLOW}Step 1: Baseline on PostgreSQL 12.3 (no delays, ${BASELINE_TRIALS} trials)${NC}"
 echo "  Natural OS scheduling — expecting ~0 anomalies..."
@@ -81,7 +81,7 @@ python3 scripts/discover_update_conflict_out.py \
     --trials "$BASELINE_TRIALS" \
     2>&1 | tee "${RESULTS_DIR}/baseline_12_3.log"
 
-# --- Step 1b: Baseline on 12.4 ---
+# Step 1b: Baseline on 12.4
 echo ""
 echo -e "${YELLOW}Step 1b: Baseline on PostgreSQL 12.4 (no delays, ${BASELINE_TRIALS} trials)${NC}"
 python3 scripts/discover_update_conflict_out.py \
@@ -91,7 +91,7 @@ python3 scripts/discover_update_conflict_out.py \
     --trials "$BASELINE_TRIALS" \
     2>&1 | tee "${RESULTS_DIR}/baseline_12_4.log" || true
 
-# --- Step 2: Discovery campaign on 12.3 ---
+# Step 2: Discovery campaign on 12.3
 echo ""
 echo -e "${YELLOW}Step 2: Discovery campaign on PostgreSQL 12.3 (K=${K}, budget=${BUDGET})${NC}"
 echo "  Heuristic delay injection — searching for anomaly-triggering schedule..."
@@ -112,7 +112,7 @@ fi
 
 echo -e "${GREEN}Artifact saved to: ${FOUND_TRACE}${NC}"
 
-# --- Step 3: Replay on 12.3 (confirm reproducibility) ---
+# Step 3: Replay on 12.3 (confirm reproducibility)
 echo ""
 echo -e "${YELLOW}Step 3: Replay found trace on PostgreSQL 12.3 (${REPLAY_TRIALS} trials)${NC}"
 python3 scripts/discover_update_conflict_out.py \
@@ -121,7 +121,7 @@ python3 scripts/discover_update_conflict_out.py \
     --replay-trials "$REPLAY_TRIALS" \
     2>&1 | tee "${RESULTS_DIR}/replay_validation.log"
 
-# --- Step 4: Summary ---
+# Step 4: Summary
 echo ""
 echo -e "${BOLD}============================================================${NC}"
 echo -e "${BOLD}  SUMMARY${NC}"

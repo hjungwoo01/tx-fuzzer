@@ -125,7 +125,7 @@ def classify_cycle_pattern(
 
     key = best.key
 
-    # --- Case A: Lost Update (G1) ---
+    # Case A: Lost Update (G1)
     lost_update = False
     for summary in (r_summary, w_summary):
         if (
@@ -142,7 +142,7 @@ def classify_cycle_pattern(
             "reason": "select_then_update_same_key",
         }
 
-    # --- Case B: Write Skew (G2) ---
+    # Case B: Write Skew (G2)
     # Both txns read a keyset that is disjoint from what they write.
     if r_summary["disjoint_read_write"] and w_summary["disjoint_read_write"]:
         return {

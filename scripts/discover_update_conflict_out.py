@@ -48,9 +48,6 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# ---------------------------------------------------------------------------
-# DSN helpers
-# ---------------------------------------------------------------------------
 
 DEFAULT_PORTS = {"12.3": 54323, "12.4": 54324}
 
@@ -71,10 +68,6 @@ def wait_for_pg(dsn: str, timeout: float = 30.0) -> bool:
             time.sleep(0.5)
     return False
 
-
-# ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
 
 SETUP_SQL = [
     "DROP TABLE IF EXISTS txn0 CASCADE",
@@ -106,6 +99,7 @@ def reset_tables(dsn: str) -> None:
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '5000'")
             for sql in TRUNCATE_SQL:
                 try:
                     cur.execute(sql)
@@ -114,10 +108,6 @@ def reset_tables(dsn: str) -> None:
     finally:
         conn.close()
 
-
-# ---------------------------------------------------------------------------
-# Session definitions (natural seed trace)
-# ---------------------------------------------------------------------------
 
 SESSION_FOO = [
     ("foo_begin",  "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"),
@@ -183,10 +173,6 @@ def build_natural_trace(variant: str = "update") -> List[Dict[str, Any]]:
     return trace
 
 
-# ---------------------------------------------------------------------------
-# Concurrent natural runner (no delays — baseline)
-# ---------------------------------------------------------------------------
-
 @dataclass
 class TrialResult:
     """Result of one concurrent trial."""
@@ -222,6 +208,8 @@ def _run_session(
     conn.autocommit = True
     try:
         cur = conn.cursor()
+        # Prevent indefinite lock waits (10s per statement)
+        cur.execute("SET statement_timeout = '10000'")
         barrier.wait(timeout=30.0)
 
         for eid, sql in session_steps:
@@ -338,6 +326,24 @@ def run_concurrent_trial(
     for t in threads:
         t.join(timeout=30.0)
 
+    # If any thread is still alive, terminate lingering PG backends to avoid
+    # cascading lock waits on subsequent reset_tables() calls.
+    if any(t.is_alive() for t in threads):
+        try:
+            _conn = psycopg2.connect(dsn)
+            _conn.autocommit = True
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "SELECT pg_terminate_backend(pid) "
+                    "FROM pg_stat_activity "
+                    "WHERE datname = current_database() "
+                    "  AND pid != pg_backend_pid() "
+                    "  AND state = 'idle in transaction'"
+                )
+            _conn.close()
+        except Exception:
+            pass
+
     # Determine bug_found predicate
     # The SSI violation requires a rw-antidependency cycle:
     #   foo reads txn0 (empty) → bar writes txn0 = rw-dep foo→bar
@@ -356,10 +362,6 @@ def run_concurrent_trial(
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Baseline runner (Stage 2)
-# ---------------------------------------------------------------------------
 
 def run_baseline(
     dsn: str,
@@ -409,10 +411,6 @@ def run_baseline(
             print(f"    → Bug appeared {bugs} times (rare / OS-dependent)")
     return stats
 
-
-# ---------------------------------------------------------------------------
-# Anti-dependency analysis (Stage 4 core)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class AntiDep:
@@ -529,10 +527,6 @@ def analyze_antideps(trace: List[Dict[str, Any]]) -> List[AntiDep]:
     return deps
 
 
-# ---------------------------------------------------------------------------
-# Heuristic delay injection engine (Stage 4)
-# ---------------------------------------------------------------------------
-
 @dataclass
 class DelayCandidate:
     """A candidate delay point with justification."""
@@ -581,7 +575,7 @@ def build_delay_candidates(
             weight=weight, delay_range=delay_range, justification=justification,
         ))
 
-    # --- Tier 1: rw-antidependency targets ---
+    # Tier 1: rw-antidependency targets
     # Delay the reader so the writer can execute first (opens conflict window)
     for dep in antideps:
         if dep.dep_type == "rw":
@@ -601,7 +595,7 @@ def build_delay_candidates(
                 f"establish snapshot on {dep.table}[{dep.key}]",
             )
 
-    # --- Tier 2: wr-dependency targets ---
+    # Tier 2: wr-dependency targets
     for dep in antideps:
         if dep.dep_type == "wr":
             _add(
@@ -612,7 +606,7 @@ def build_delay_candidates(
                 f"on {dep.table}[{dep.key}] (wr-dep)",
             )
 
-    # --- Tier 3: commit/abort hold (NEW HEURISTIC) ---
+    # Tier 3: commit/abort hold
     # Delaying COMMIT or ABORT keeps modified tuple versions in-flight longer,
     # which expands the window where SSI conflict checks must reason about
     # uncommitted tuple chains. This is critical for the update-conflict-out bug.
@@ -620,7 +614,6 @@ def build_delay_candidates(
         for idx, (eid, sql) in enumerate(steps):
             cls = classify_sql(sql)
             if cls in ("commit", "rollback"):
-                # Check if this session has a preceding write
                 has_write = any(classify_sql(s) == "write" for _, s in steps[:idx])
                 if has_write:
                     _add(
@@ -631,7 +624,7 @@ def build_delay_candidates(
                         f"(exposes SSI conflict-check edge cases)",
                     )
 
-    # --- Tier 4: ww-conflict ---
+    # Tier 4: ww-conflict
     for dep in antideps:
         if dep.dep_type == "ww":
             _add(
@@ -642,7 +635,7 @@ def build_delay_candidates(
                 f"on {dep.table}[{dep.key}] (ww-conflict)",
             )
 
-    # --- Tier 5: fallback (any SQL event) ---
+    # Tier 5: fallback (any SQL event)
     for ev in trace:
         eid = ev.get("event_id", "")
         sess = ev.get("session", "")
@@ -671,7 +664,6 @@ def select_delays_lottery(
     if not candidates or k <= 0:
         return {}
 
-    # Build weighted pool
     pool: List[Tuple[DelayCandidate, int]] = []
     for c in candidates:
         pool.extend([(c, c.weight)] * c.weight)
@@ -694,10 +686,6 @@ def select_delays_lottery(
 
     return selected
 
-
-# ---------------------------------------------------------------------------
-# Oracle: bug_found predicate (Stage 3)
-# ---------------------------------------------------------------------------
 
 def check_bug_found(result: TrialResult) -> Tuple[bool, str]:
     """
@@ -754,10 +742,6 @@ def check_fixed_expected(result: TrialResult) -> Tuple[bool, str]:
     return True, "OK: no cycle formed (transactions serialized naturally)"
 
 
-# ---------------------------------------------------------------------------
-# Discovery campaign (Stage 4)
-# ---------------------------------------------------------------------------
-
 def run_discovery_campaign(
     dsn: str,
     variant: str = "update",
@@ -793,7 +777,6 @@ def run_discovery_campaign(
     mutations_tried = 0
 
     for mutation_round in range(1, budget + 1):
-        # Select delays via weighted lottery
         delays = select_delays_lottery(candidates, rng, k=k)
         if not delays:
             continue
@@ -891,10 +874,6 @@ def _build_trace_with_delays(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Replay a found trace (for validation)
-# ---------------------------------------------------------------------------
-
 def replay_found_trace(
     dsn: str,
     artifact: Dict[str, Any],
@@ -935,10 +914,6 @@ def replay_found_trace(
     return stats
 
 
-# ---------------------------------------------------------------------------
-# Cross-version validation (Stage 5)
-# ---------------------------------------------------------------------------
-
 def run_cross_version_validation(
     artifact: Dict[str, Any],
     replay_trials: int = 20,
@@ -965,10 +940,6 @@ def run_cross_version_validation(
 
     return report
 
-
-# ---------------------------------------------------------------------------
-# Full demo flow (Stage 5)
-# ---------------------------------------------------------------------------
 
 def run_full_demo(
     variant: str = "update",
@@ -1042,7 +1013,6 @@ def run_full_demo(
         "delays": artifact["delays"],
     }
 
-    # Save artifact
     results_dir = ROOT / "results" / "update-conflict-out"
     results_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = results_dir / "found.json"
@@ -1117,10 +1087,6 @@ def run_full_demo(
 
     return report
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def main() -> int:
     parser = argparse.ArgumentParser(

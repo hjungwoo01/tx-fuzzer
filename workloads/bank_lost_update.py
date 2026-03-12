@@ -115,7 +115,6 @@ def run_trial(
     }
     lock = threading.Lock()
 
-    # Setup
     conn_s = psycopg2.connect(dsn)
     conn_s.autocommit = True
     cur_s = conn_s.cursor()

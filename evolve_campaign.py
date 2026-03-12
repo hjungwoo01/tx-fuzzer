@@ -58,10 +58,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 from run_litmus import DEFAULT_DSN  # type: ignore[import]
 
 
-# ----------------------------
-# Trace/replay utility helpers
-# ----------------------------
-
 def _event_counts_toward_replay(ev: Dict[str, Any]) -> bool:
     """Return True when replay_litmus would execute this event."""
     raw_type = str(ev.get("type", "")).lower()
@@ -392,10 +388,6 @@ def _history_events_to_trace(events: List[Dict[str, Any]]) -> List[Dict[str, Any
     return trace
 
 
-# ----------------------------
-# Bandit and campaign structs
-# ----------------------------
-
 @dataclass
 class BanditArm:
     """
@@ -478,9 +470,6 @@ class EvolutionaryCampaign:
         # Keep replay cost bounded even when seed history is very large.
         self.seed_trace_events = 400
 
-    # ----------------------------
-    # Seed generation / bootstraps
-    # ----------------------------
 
     def _run_go_seed_history(self) -> None:
         """
@@ -606,9 +595,6 @@ class EvolutionaryCampaign:
             f"(hash={state_hash}, seen_states={len(self.seen_state_hashes)})."
         )
 
-    # ----------------------------
-    # Multi-armed bandit selection
-    # ----------------------------
 
     def _select_parent_index(self, iteration: int) -> int:
         """
@@ -653,9 +639,6 @@ class EvolutionaryCampaign:
             arm.novelty_hits += 1
             arm.last_novel_iteration = iteration
 
-    # ----------------------------
-    # Delay-stacking mutation
-    # ----------------------------
 
     @staticmethod
     def _event_has_delay(ev: Dict[str, Any]) -> bool:
@@ -710,9 +693,6 @@ class EvolutionaryCampaign:
 
         return child, mutation_note
 
-    # ----------------------------
-    # Replay execution
-    # ----------------------------
 
     def _execute_trace(
         self,
@@ -769,9 +749,6 @@ class EvolutionaryCampaign:
             return False, None, "MISSING_FINAL_STATE_PAYLOAD", duration
         return True, payload, None, duration
 
-    # ----------------------------
-    # Coverage oracle + retention
-    # ----------------------------
 
     def _save_success_artifacts(
         self,
@@ -857,9 +834,6 @@ class EvolutionaryCampaign:
         )
         return True
 
-    # ----------------------------
-    # Main evolutionary loop
-    # ----------------------------
 
     def run(self) -> None:
         self._initialize_seed_corpus()

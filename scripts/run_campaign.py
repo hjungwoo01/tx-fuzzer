@@ -904,20 +904,16 @@ class CampaignRunner:
         norm_outcome = (outcome_type or "").upper()
         # Build full record including the mutated events so we can fully replay/inspect later.
         record = {
-            # --- Identity ---
             "hash": h,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "iteration": iteration,
-            # --- Reproducibility ---
             "target": self.target,
             "workload_config": config,
             # The actual recipe for the bug / interesting state.
             "mutated_events": trace,
-            # --- Results ---
             "outcome_type": norm_outcome,
             "error_signature": error_sig,
             "output": _jsonable(output),
-            # --- Metadata ---
             "execution_time": duration,
             "dsn": self.dsn,
             "isolation": self.isolation,
@@ -1177,7 +1173,6 @@ def main() -> int:
             "(measures workload drift, not fixed-seed scheduler nondeterminism)."
         ),
     )
-    # --- Litmus reproducer mode -------------------------------------------
     parser.add_argument(
         "--litmus",
         default=None,

@@ -50,9 +50,6 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# ---------------------------------------------------------------------------
-# DSN helpers
-# ---------------------------------------------------------------------------
 
 DEFAULT_PORTS = {"12.3": 54323, "12.4": 54324}
 
@@ -62,10 +59,6 @@ def dsn_for_pg_version(version: str) -> str:
     return f"postgres://postgres:postgres@localhost:{port}/postgres?sslmode=disable"
 
 
-# ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
-
 SETUP_SQL = [
     "DROP TABLE IF EXISTS txn0 CASCADE",
     "DROP TABLE IF EXISTS txn1 CASCADE",
@@ -73,10 +66,6 @@ SETUP_SQL = [
     "CREATE TABLE txn1 (id int4 PRIMARY KEY, val TEXT)",
 ]
 
-
-# ---------------------------------------------------------------------------
-# Session definitions
-# ---------------------------------------------------------------------------
 
 # Each session is a list of (event_id, sql) tuples.
 # The global schedule is an ordered list of event_ids.
@@ -134,10 +123,6 @@ CANONICAL_DELETE = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
-
 @dataclass
 class StepResult:
     event_id: str
@@ -159,10 +144,6 @@ class ScheduleResult:
     bar_commit_error: Optional[str] = None
     summary: str = ""
 
-
-# ---------------------------------------------------------------------------
-# Deterministic schedule executor (NO time.sleep)
-# ---------------------------------------------------------------------------
 
 class DeterministicExecutor:
     """
@@ -302,10 +283,6 @@ class DeterministicExecutor:
         return sr
 
 
-# ---------------------------------------------------------------------------
-# K-bounded schedule enumerator
-# ---------------------------------------------------------------------------
-
 def _build_session_queues(sessions: Dict[str, List[Tuple[str, str]]]) -> Dict[str, List[str]]:
     """Return per-session FIFO queues of event_ids."""
     return {name: [eid for eid, _ in steps] for name, steps in sessions.items()}
@@ -378,10 +355,6 @@ def _enumerate_schedules_k_bounded(
     return results
 
 
-# ---------------------------------------------------------------------------
-# Pretty printing
-# ---------------------------------------------------------------------------
-
 def print_result(sr: ScheduleResult, verbose: bool = True) -> None:
     variant_label = sr.variant.upper()
     print(f"\n{'='*70}")
@@ -430,10 +403,6 @@ def result_to_json(sr: ScheduleResult) -> Dict[str, Any]:
         ],
     }
 
-
-# ---------------------------------------------------------------------------
-# High-level runners
-# ---------------------------------------------------------------------------
 
 def run_canonical(dsn: str, variant: str = "update", verbose: bool = True) -> ScheduleResult:
     """Run the canonical permutation for a variant."""
@@ -528,10 +497,6 @@ def run_comparison(verbose: bool = True) -> Dict[str, Any]:
     return report
 
 
-# ---------------------------------------------------------------------------
-# Wait for Postgres readiness
-# ---------------------------------------------------------------------------
-
 def wait_for_postgres(dsn: str, timeout: float = 30.0, poll: float = 0.5) -> bool:
     """Poll until a connection succeeds or timeout expires."""
     deadline = time.monotonic() + timeout
@@ -544,10 +509,6 @@ def wait_for_postgres(dsn: str, timeout: float = 30.0, poll: float = 0.5) -> boo
             time.sleep(poll)
     return False
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def main() -> int:
     parser = argparse.ArgumentParser(

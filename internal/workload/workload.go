@@ -35,8 +35,6 @@ type GenSpec struct {
 	Ref      string
 }
 
-// --- helpers to robustly coerce YAML scalars ---
-
 func asInt64(v any) (int64, bool) {
 	switch x := v.(type) {
 	case int:

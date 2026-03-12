@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -34,15 +35,18 @@ from scripts.experiments.micro_runner import (
 )
 from scripts.experiments.case_studies import (
     CaseResult, run_pg_case_study, run_mysql_case_study, run_sqlite_case_study,
+    run_mysql_rr_nonexistent_case, run_sqlite_narrow_dirty_case,
 )
 from scripts.experiments.overhead_bench import (
     OverheadRow, run_overhead_benchmark, write_overhead_csv, write_overhead_md,
 )
+from scripts.repro_pipeline.bug_pack import (
+    list_packs, SMOKE_CONFIG as REPRO_SMOKE_CONFIG,
+    QUICK_CONFIG as REPRO_QUICK_CONFIG,
+)
+import scripts.repro_pipeline.packs  # noqa: F401 — registers packs
 
 
-# ---------------------------------------------------------------------------
-# Suite configurations
-# ---------------------------------------------------------------------------
 QUICK_CONFIG = {
     "duration_s": 20,
     "reps": 5,
@@ -69,6 +73,7 @@ LONG_CONFIG = {
 PG_12_3_DSN = os.getenv("PG_12_3_DSN", "postgres://postgres:postgres@localhost:54323/postgres?sslmode=disable")
 PG_12_4_DSN = os.getenv("PG_12_4_DSN", "postgres://postgres:postgres@localhost:54324/postgres?sslmode=disable")
 MYSQL_DSN = os.getenv("MYSQL_DSN", DEFAULT_DSNS["mysql"])
+MYSQL_8034_DSN = os.getenv("MYSQL_8034_DSN", "mysql://root:root@localhost:33080/test")
 SQLITE_DSN = os.getenv("SQLITE_DSN", "/tmp/tx_fuzzer_multidb.sqlite")
 
 
@@ -94,9 +99,6 @@ def _db_available(db: str, dsn: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Section 1: Micro workload coverage
-# ---------------------------------------------------------------------------
 def run_micro_suite(
     *,
     dbs: List[str],
@@ -169,9 +171,6 @@ def run_micro_suite(
     return all_points
 
 
-# ---------------------------------------------------------------------------
-# Section 2: Case studies
-# ---------------------------------------------------------------------------
 def run_case_studies(
     *,
     dbs: List[str],
@@ -264,6 +263,61 @@ def run_case_studies(
                     except Exception as e:
                         print(f"    ERROR: {e}", file=sys.stderr)
 
+
+    # MySQL headline: RR non-existent row (Bug #114389, requires MySQL 8.0.34)
+    if "mysql" in dbs:
+        mysql_8034_dsn = dsns.get("mysql_8034", MYSQL_8034_DSN)
+        if _db_available("mysql", mysql_8034_dsn):
+            for use_rc, label, is_control in [
+                (False, "rr_nonexistent_buggy", False),
+                (True, "rr_nonexistent_fixed_rc", True),
+            ]:
+                for strat in strategies:
+                    for rep in range(reps):
+                        print(f"  [mysql/headline] {label} / {strat} / rep={rep+1}")
+                        try:
+                            cr = run_mysql_rr_nonexistent_case(
+                                dsn=mysql_8034_dsn, strategy=strat,
+                                duration_s=dur, max_trials=max_trials,
+                                delay_ms=cfg["delay_ms"], rep=rep,
+                                control=is_control,
+                                use_rc_for_t3=use_rc,
+                                artifact_dir=output_dir / "artifacts" / "mysql_rr_nonexistent",
+                            )
+                            cr.case_name = f"rr_nonexistent_{label}"
+                            results.append(cr)
+                            status = "BUG" if cr.bug_found else "clean"
+                            print(f"    {status} (ttf={cr.time_to_first_s})")
+                        except Exception as e:
+                            print(f"    ERROR: {e}", file=sys.stderr)
+
+    # SQLite headline: Narrow dirty read (shared-cache + read_uncommitted)
+    # Uses in-memory shared-cache URI (different from default file-based SQLite)
+    if "sqlite" in dbs:
+        sqlite_headline_dsn = "file:multidb_headline?mode=memory&cache=shared"
+        for sc, ru, label, is_control in [
+            (True, True, "narrow_dirty_buggy", False),
+            (True, False, "narrow_dirty_fixed_no_ru", True),
+        ]:
+            for strat in strategies:
+                for rep in range(reps):
+                    print(f"  [sqlite/headline] {label} / {strat} / rep={rep+1}")
+                    try:
+                        cr = run_sqlite_narrow_dirty_case(
+                            dsn=sqlite_headline_dsn, strategy=strat,
+                            duration_s=dur, max_trials=max_trials,
+                            delay_ms=10.0, rep=rep,
+                            control=is_control,
+                            shared_cache=sc, read_uncommitted=ru,
+                            artifact_dir=output_dir / "artifacts" / "sqlite_narrow_dirty",
+                        )
+                        cr.case_name = f"dirty_read_narrow_{label}"
+                        results.append(cr)
+                        status = "BUG" if cr.bug_found else "clean"
+                        print(f"    {status} (ttf={cr.time_to_first_s})")
+                    except Exception as e:
+                        print(f"    ERROR: {e}", file=sys.stderr)
+
     # Write case study CSV
     csv_path = output_dir / "case_studies.csv"
     _ensure_dir(csv_path.parent)
@@ -282,9 +336,6 @@ def run_case_studies(
     return results
 
 
-# ---------------------------------------------------------------------------
-# Section 3: Overhead benchmark
-# ---------------------------------------------------------------------------
 def run_overhead_suite(
     *,
     dbs: List[str],
@@ -326,15 +377,111 @@ def run_overhead_suite(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Report generation
-# ---------------------------------------------------------------------------
+@dataclass
+class ReproPackResult:
+    """Lightweight result for a repro pack run within multidb suite."""
+    pack_id: str = ""
+    db: str = ""
+    strategy: str = ""
+    bug_found: bool = False
+    time_to_first_s: Optional[float] = None
+    total_trials: int = 0
+    replay_buggy: int = 0
+    replay_total: int = 0
+    control_buggy: int = 0
+    control_total: int = 0
+
+
+def run_repro_packs(
+    *,
+    dbs: List[str],
+    output_dir: Path,
+    smoke_only: bool = False,
+) -> List[ReproPackResult]:
+    """Run registered repro pipeline packs as part of multidb suite."""
+    print("\n=== REPRO PIPELINE PACKS ===")
+    results: List[ReproPackResult] = []
+    cfg = REPRO_SMOKE_CONFIG if smoke_only else REPRO_QUICK_CONFIG
+
+    all_packs = list_packs()
+    for pack in all_packs:
+        if pack.db not in dbs:
+            continue
+        dsn = pack.buggy_dsn()
+        if not pack.is_available(dsn):
+            print(f"  SKIP {pack.id} (not available)")
+            continue
+
+        try:
+            pack.setup(dsn)
+        except Exception as e:
+            print(f"  SKIP {pack.id} (setup failed: {e})")
+            continue
+
+        # Run heuristic discovery only (fastest to confirm)
+        print(f"  [{pack.db}] {pack.id} / heuristic")
+        disc = pack.run_discovery(dsn, "heuristic", cfg)
+        status = "BUG" if disc["bug_found"] else "clean"
+        ttf = disc.get("time_to_first_s")
+        print(f"    {status} (ttf={ttf})")
+
+        r = ReproPackResult(
+            pack_id=pack.id, db=pack.db, strategy="heuristic",
+            bug_found=disc["bug_found"],
+            time_to_first_s=ttf,
+            total_trials=disc["total_trials"],
+        )
+
+        # Quick replay if bug was found
+        if disc["bug_found"]:
+            replay_n = cfg.replay_count
+            buggy_replay = pack.run_replay(dsn, replay_n)
+            r.replay_buggy = buggy_replay.bug_count
+            r.replay_total = buggy_replay.total
+            print(f"    replay: {buggy_replay.bug_count}/{buggy_replay.total}")
+
+            if hasattr(pack, "run_control_replay"):
+                ctrl = pack.run_control_replay(pack.control_dsn(), replay_n)
+            else:
+                ctrl_dsn = pack.control_dsn()
+                if pack.is_available(ctrl_dsn):
+                    pack.setup(ctrl_dsn)
+                    ctrl = pack.run_replay(ctrl_dsn, replay_n)
+                else:
+                    ctrl = None
+            if ctrl:
+                r.control_buggy = ctrl.bug_count
+                r.control_total = ctrl.total
+                print(f"    control: {ctrl.bug_count}/{ctrl.total}")
+
+        results.append(r)
+
+    # Write CSV
+    csv_path = output_dir / "repro_packs.csv"
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["pack_id", "db", "strategy", "bug_found",
+                     "time_to_first_s", "total_trials",
+                     "replay_buggy", "replay_total",
+                     "control_buggy", "control_total"])
+        for rr in results:
+            w.writerow([
+                rr.pack_id, rr.db, rr.strategy, rr.bug_found,
+                rr.time_to_first_s, rr.total_trials,
+                rr.replay_buggy, rr.replay_total,
+                rr.control_buggy, rr.control_total,
+            ])
+    print(f"  Wrote {csv_path}")
+    return results
+
+
 def generate_summary(
     *,
     output_dir: Path,
     coverage_points: List[CoveragePoint],
     case_results: List[CaseResult],
     overhead_rows: List[OverheadRow],
+    repro_results: Optional[List[ReproPackResult]] = None,
 ) -> None:
     """Generate summary.md and report.md."""
     summary_path = output_dir / "summary.md"
@@ -425,6 +572,23 @@ def generate_summary(
             lines.append(f"| {r.db} | {r.workload} | {r.mode} | {r.txns_per_sec} | {r.median_latency_ms} | {r.p95_latency_ms} |")
     lines.append("")
 
+    # Repro pipeline packs
+    if repro_results:
+        lines.append("## Repro Pipeline Packs")
+        lines.append("")
+        lines.append("| Pack | DB | Bug Found | TTF (s) | Replay (buggy) | Replay (control) |")
+        lines.append("|------|-----|-----------|---------|----------------|------------------|")
+        for rr in repro_results:
+            ttf_str = f"{rr.time_to_first_s:.2f}" if rr.time_to_first_s is not None else "-"
+            buggy_str = f"{rr.replay_buggy}/{rr.replay_total}" if rr.replay_total else "-"
+            ctrl_str = f"{rr.control_buggy}/{rr.control_total}" if rr.control_total else "-"
+            lines.append(
+                f"| {rr.pack_id} | {rr.db} | "
+                f"{'YES' if rr.bug_found else 'no'} | {ttf_str} | "
+                f"{buggy_str} | {ctrl_str} |"
+            )
+        lines.append("")
+
     text = "\n".join(lines)
     summary_path.write_text(text, encoding="utf-8")
     report_path.write_text(text, encoding="utf-8")
@@ -432,9 +596,6 @@ def generate_summary(
     print(f"Wrote {report_path}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(description="Multi-DB evaluation runner")
     parser.add_argument("--suite", choices=["quick", "long"], default="quick")
@@ -448,6 +609,8 @@ def main() -> int:
     parser.add_argument("--skip-micro", action="store_true")
     parser.add_argument("--skip-cases", action="store_true")
     parser.add_argument("--skip-overhead", action="store_true")
+    parser.add_argument("--skip-repro", action="store_true",
+                        help="Skip repro pipeline pack checks")
     args = parser.parse_args()
 
     cfg = QUICK_CONFIG if args.suite == "quick" else LONG_CONFIG
@@ -480,6 +643,7 @@ def main() -> int:
     coverage_points: List[CoveragePoint] = []
     case_results: List[CaseResult] = []
     overhead_rows: List[OverheadRow] = []
+    repro_results: List[ReproPackResult] = []
 
     if not args.skip_micro:
         coverage_points = run_micro_suite(
@@ -499,11 +663,18 @@ def main() -> int:
             cfg=cfg, smoke_only=args.smoke_only,
         )
 
+    if not args.skip_repro:
+        repro_results = run_repro_packs(
+            dbs=all_dbs, output_dir=output_dir,
+            smoke_only=args.smoke_only,
+        )
+
     generate_summary(
         output_dir=output_dir,
         coverage_points=coverage_points,
         case_results=case_results,
         overhead_rows=overhead_rows,
+        repro_results=repro_results,
     )
 
     print("\n=== DONE ===")

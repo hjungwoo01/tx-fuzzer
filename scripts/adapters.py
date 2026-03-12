@@ -219,8 +219,6 @@ class DatabaseAdapter(ABC):
         ...
 
 
-# --- PostgreSQL ---------------------------------------------------------------
-
 _ISOLATION_LEVELS = {
     "READ COMMITTED": "READ COMMITTED",
     "REPEATABLE READ": "REPEATABLE READ",
@@ -304,8 +302,6 @@ class PostgresAdapter(DatabaseAdapter):
             except Exception:
                 pass
 
-
-# --- MySQL --------------------------------------------------------------------
 
 class MySQLAdapter(DatabaseAdapter):
     """MySQL backend using pymysql. Uses MySQL transaction isolation and locking syntax (e.g. FOR UPDATE)."""
@@ -419,8 +415,6 @@ class MySQLAdapter(DatabaseAdapter):
             except Exception:
                 pass
 
-
-# --- SQLite ------------------------------------------------------------------
 
 class SQLiteAdapter(DatabaseAdapter):
     """SQLite backend using stdlib sqlite3 with file-backed database for concurrency tests."""
@@ -561,8 +555,6 @@ class SQLiteAdapter(DatabaseAdapter):
             except Exception:
                 pass
 
-
-# --- Redis --------------------------------------------------------------------
 
 _SELECT_KV = re.compile(r"SELECT\s+v\s+FROM\s+kv\s+WHERE\s+k\s*=\s*(\d+|\?|%s)", re.I)
 _UPDATE_KV = re.compile(r"UPDATE\s+kv\s+SET\s+v\s*=\s*(\d+|\?|%s)\s+WHERE\s+k\s*=\s*(\d+|\?|%s)", re.I)

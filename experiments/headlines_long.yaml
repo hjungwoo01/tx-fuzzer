@@ -1,0 +1,44 @@
+# Headline Evaluation — Long Run Configuration
+#
+# Use this config when quick budgets (20s) don't show sufficient
+# stress/heuristic contrast. The long run uses 120s per rep with
+# 10 reps, giving 1000 max trials per strategy × rep.
+#
+# Expected total runtime: ~60-90 minutes (depends on MySQL latency).
+#
+# Usage:
+#   python scripts/experiments/run_headline_eval.py --budget 120 --reps 10
+#
+# Or with explicit DSNs:
+#   python scripts/experiments/run_headline_eval.py \
+#     --budget 120 --reps 10 \
+#     --mysql-dsn "mysql://root:root@127.0.0.1:33080/test" \
+#     --sqlite-dsn "file:headline_long?mode=memory&cache=shared"
+
+budget_s: 120
+reps: 10
+max_trials: 1000
+strategies:
+  - stress
+  - random
+  - heuristic
+seeds: [42, 10042, 20042, 30042, 40042, 50042, 60042, 70042, 80042, 90042]
+
+packs:
+  mysql_rr_phantom:
+    delay_ms: 5.0
+    description: "MySQL RR Non-existent Row (Bug #114389)"
+  sqlite_narrow_dirty:
+    delay_ms: 10.0
+    description: "SQLite Narrow Dirty Read (shared-cache)"
+
+# Expected outcomes (long run):
+# - stress: 0-10% success rate (bug requires precise interleaving)
+# - random: 60-100% success rate (delays help but not guaranteed)
+# - heuristic: 100% success rate (deterministic event-gating)
+# - control: 0% bugs across all strategies
+
+replay:
+  count: 20
+  # Replay uses heuristic strategy (event-gated, deterministic)
+  # Expect: 20/20 on buggy, 0/20 on control

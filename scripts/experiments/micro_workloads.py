@@ -28,9 +28,6 @@ def _hash_dict(d: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
-# ---------------------------------------------------------------------------
-# SQL templates per DB (only where syntax differs)
-# ---------------------------------------------------------------------------
 def _concat_expr(db: str, col: str, token: str) -> str:
     """Return SQL expression for appending token to column value."""
     if db == "mysql":
@@ -46,9 +43,6 @@ def _returning_clause(db: str) -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
-# 1. Job Queue Claim Micro
-# ---------------------------------------------------------------------------
 def job_queue_setup_sql(db: str) -> List[str]:
     if db == "mysql":
         return [
@@ -187,9 +181,6 @@ def job_queue_canonical(adapter: DBAdapter, outcomes: Optional[List[Dict[str, An
     }
 
 
-# ---------------------------------------------------------------------------
-# 2. Bank Overdraft Micro
-# ---------------------------------------------------------------------------
 def bank_setup_sql(db: str) -> List[str]:
     if db == "mysql":
         return [
@@ -331,9 +322,6 @@ def bank_canonical(adapter: DBAdapter, outcomes: Optional[List[Dict[str, Any]]] 
     }
 
 
-# ---------------------------------------------------------------------------
-# 3. List Append Micro
-# ---------------------------------------------------------------------------
 def list_append_setup_sql(db: str) -> List[str]:
     if db == "mysql":
         return [
@@ -441,9 +429,6 @@ def list_append_canonical(adapter: DBAdapter, outcomes: Optional[List[Dict[str, 
     return {"val": val, "tokens": sorted(tokens), "error_categories": error_cats}
 
 
-# ---------------------------------------------------------------------------
-# Workload registry
-# ---------------------------------------------------------------------------
 @dataclass
 class MicroWorkload:
     name: str

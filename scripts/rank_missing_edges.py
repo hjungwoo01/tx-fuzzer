@@ -315,7 +315,6 @@ def score_candidates(
         cent = 0.5 * (centrality.get(src, 0.0) + centrality.get(dst, 0.0))
         gap = topological_gap(graph, src, dst)
         hints = key_hints_from_triad(graph, src, dst)
-        # Weighted score combining heuristics
         score = (
             2.0 * pcount
             + 1.5 * tcount

@@ -42,7 +42,6 @@ sys.path.insert(0, str(ROOT))
 
 from workloads import OracleResult, list_workloads, load_workload
 
-# ── Data classes ────────────────────────────────────────────────────────────
 
 @dataclass
 class TrialMetrics:
@@ -90,8 +89,6 @@ class ExperimentResult:
     ttfb_trials_success_only: Optional[int] = None
     p_value_heuristic_vs_random: Optional[float] = None
 
-
-# ── PostgreSQL helpers ──────────────────────────────────────────────────────
 
 DEFAULT_PORTS = {"12.3": 54323, "12.4": 54324, "16.2": 54326}
 
@@ -170,8 +167,6 @@ def canonical_state_hash(wl_mod: Any, result: Any) -> str:
     return hash_final_state(snap)
 
 
-# ── Statistical utilities ───────────────────────────────────────────────────
-
 def wilson_ci(successes: int, trials: int, z: float = 1.96) -> Tuple[float, float]:
     """Wilson score interval for a binomial proportion (95% CI by default)."""
     if trials == 0:
@@ -217,8 +212,6 @@ def fisher_exact_one_sided(a: int, b: int, c: int, d: int) -> float:
     except Exception:
         return 1.0
 
-
-# ── Strategy runners ────────────────────────────────────────────────────────
 
 def _extract_got_40P01(result: Any) -> bool:
     """Extract whether a trial hit deadlock_detected (40P01) from the result."""
@@ -439,8 +432,6 @@ def run_random_delay_trials(
     return metrics
 
 
-# ── Replay verification ────────────────────────────────────────────────────
-
 def replay_verify(
     wl_mod: Any,
     dsn: str,
@@ -500,8 +491,6 @@ def cross_version_verify(
     }
 
 
-# ── Experiment aggregation ──────────────────────────────────────────────────
-
 def aggregate_experiment(
     workload: str,
     strategy: str,
@@ -550,8 +539,6 @@ def aggregate_experiment(
         ttfb_trials_success_only=first_bug_trial if bugs else None,
     )
 
-
-# ── Main experiment runner ──────────────────────────────────────────────────
 
 def run_experiment(
     workload_name: str,
@@ -621,8 +608,6 @@ def run_experiment(
 
     return result
 
-
-# ── Suite runner ────────────────────────────────────────────────────────────
 
 def run_suite(config: Dict[str, Any], smoke: bool = False) -> List[ExperimentResult]:
     """Run the full experiment matrix defined in config."""
@@ -702,8 +687,6 @@ def run_suite(config: Dict[str, Any], smoke: bool = False) -> List[ExperimentRes
 
     return results
 
-
-# ── Output generation ───────────────────────────────────────────────────────
 
 def generate_summary(results: List[ExperimentResult], output_dir: Path,
                      pg_versions_info: Dict[str, str]) -> None:
@@ -830,7 +813,7 @@ def _write_markdown_report(
     for r in results:
         by_workload[r.workload].append(r)
 
-    # ── Main results table ──
+
     lines.append("## Main Results: Baseline vs Fuzzer\n")
     lines.append("| Workload | Strategy | Iso | PG | Var | "
                  "Bugs/Trials | Anomaly Rate | 95% CI | TTFB (med, success only) | States | "
@@ -859,7 +842,7 @@ def _write_markdown_report(
         )
     lines.append("")
 
-    # ── Fisher's exact tests: heuristic vs random ──
+
     # Compute for each workload/iso/pg/variant pair
     fisher_lines = []
     for key, vals in sorted(agg.items()):
@@ -889,7 +872,7 @@ def _write_markdown_report(
         lines.extend(fisher_lines)
         lines.append("")
 
-    # ── Replay results (per-strategy aggregated, honest reporting) ──
+
     replay_results = [r for r in results if r.replay_success_rate is not None]
     if replay_results:
         lines.append("## Replay Verification\n")
@@ -922,7 +905,7 @@ def _write_markdown_report(
             )
         lines.append("")
 
-    # ── Detailed per-workload ──
+
     for wl_name, wl_results in sorted(by_workload.items()):
         lines.append(f"### {wl_name}\n")
         for r in wl_results:
@@ -988,8 +971,6 @@ def _aggregate_across_reps(results: List[ExperimentResult]) -> Dict:
         }
     return agg
 
-
-# ── CLI ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="tx-fuzzer experiment suite runner")

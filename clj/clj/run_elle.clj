@@ -7,9 +7,6 @@
             [jepsen.history :as h])
   (:gen-class))
 
-;; --------------------------------
-;; Read many EDN forms from a file
-;; --------------------------------
 (defn read-history
   "Reads a file containing *many* EDN forms (one per line or chunk) into a vector."
   [f]
@@ -20,9 +17,6 @@
           acc
           (recur (conj acc form)))))))
 
-;; -------------------------------
-;; Helpers (define before use)
-;; -------------------------------
 (defn ->long
   "Coerce x into a Long where reasonable.
    Accepts numbers and strings like \"123\" or \"k123\"."
@@ -48,9 +42,6 @@
     (map? x)     :map
     :else        :other))
 
-;; -------------------------------
-;; Sub-op sanitization
-;; -------------------------------
 (defn sanitize-subop
   "Given a sub-op like [:r k] / [:r k v?] / [:w k v], ensure numeric k/v (or nil for read v).
    Returns {:status :ok :sub [...] } or {:status :bad :reason ... :sub sub}."
@@ -116,9 +107,6 @@
       (sanitize-value! op')
       op')))
 
-;; -------------------------------
-;; Defensive scans
-;; -------------------------------
 (defn sweep-for-bad-kv
   "Scan all :txn sub-ops and report the first where k/v is a keyword/other.
    Also returns tallies for key/value types across the history."
@@ -187,9 +175,6 @@
                            :sub x})))))
       @bad))))
 
-;; -------------------------------
-;; Model runner
-;; -------------------------------
 (def candidate-models
   [:snapshot-isolation])
 
@@ -256,7 +241,6 @@
           :else
           (recur (subvec args 1) (assoc opts :file arg)))))))
 
-;; -------------------------------
 (defn -main [& args]
   (println "[run-elle] starting, args =" (vec args))
   (let [{:keys [file models]}

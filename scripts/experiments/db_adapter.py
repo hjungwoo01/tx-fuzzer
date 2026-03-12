@@ -75,9 +75,6 @@ class DBAdapter(ABC):
         return self.exec(sql, params)
 
 
-# ---------------------------------------------------------------------------
-# Postgres adapter
-# ---------------------------------------------------------------------------
 class PostgresExpAdapter(DBAdapter):
     db_name = "postgres"
 
@@ -179,9 +176,6 @@ class PostgresExpAdapter(DBAdapter):
         return a
 
 
-# ---------------------------------------------------------------------------
-# MySQL adapter
-# ---------------------------------------------------------------------------
 class MySQLExpAdapter(DBAdapter):
     db_name = "mysql"
 
@@ -292,9 +286,6 @@ class MySQLExpAdapter(DBAdapter):
         return a
 
 
-# ---------------------------------------------------------------------------
-# SQLite adapter
-# ---------------------------------------------------------------------------
 class SQLiteExpAdapter(DBAdapter):
     db_name = "sqlite"
 
@@ -419,9 +410,6 @@ class SQLiteExpAdapter(DBAdapter):
         return a
 
 
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
 DEFAULT_DSNS = {
     "postgres": "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
     "mysql": "mysql://root:root@localhost:3307/test",

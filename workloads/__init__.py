@@ -24,7 +24,6 @@ class OracleResult:
     metrics: Dict[str, Any] = field(default_factory=dict)
 
 
-# ── module catalogue ────────────────────────────────────────────────────────
 _WORKLOAD_MODULES = {
     "update_conflict_out":  "workloads.update_conflict_out",
     "doctors_write_skew":   "workloads.doctors_write_skew",

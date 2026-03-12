@@ -38,7 +38,6 @@ RESET = "\033[0m"
 
 @dataclass
 class LitmusResult:
-    """Simple container for litmus outcomes."""
 
     anomaly: str
     safe: bool
