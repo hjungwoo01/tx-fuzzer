@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Experiment harness for the tx-fuzzer PostgreSQL evaluation suite.
 

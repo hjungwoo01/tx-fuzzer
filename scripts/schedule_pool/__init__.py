@@ -12,6 +12,7 @@ from .pool import SchedulePool, PoolConfig, SearchPhase
 from .mutator import ScheduleMutator, MutationConfig
 from .retention import RetentionPolicy, RetentionReason
 from .base_strategy import BaseStrategy, RandomStrategy, HeuristicStrategy, EmptyStrategy
+from .runner import run_pool_search, run_random_pool_search, run_heuristic_pool_search, replay_schedule
 
 __all__ = [
     "Schedule",
@@ -30,4 +31,8 @@ __all__ = [
     "RandomStrategy",
     "HeuristicStrategy",
     "EmptyStrategy",
+    "run_pool_search",
+    "run_random_pool_search",
+    "run_heuristic_pool_search",
+    "replay_schedule",
 ]

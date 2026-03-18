@@ -179,6 +179,7 @@ class BugPack(ABC):
 
 
 _REGISTRY: Dict[str, BugPack] = {}
+_ALIASES: Dict[str, str] = {}
 
 
 def register_pack(pack: BugPack) -> BugPack:
@@ -187,12 +188,23 @@ def register_pack(pack: BugPack) -> BugPack:
     return pack
 
 
+def register_alias(alias: str, pack_id: str) -> None:
+    """Register an alternate user-facing name for a canonical pack id."""
+    _ALIASES[alias] = pack_id
+
+
+def _resolve_pack_id(pack_id: str) -> str:
+    return _ALIASES.get(pack_id, pack_id)
+
+
 def get_pack(pack_id: str) -> BugPack:
     """Look up a registered pack by ID."""
-    if pack_id not in _REGISTRY:
-        available = ", ".join(sorted(_REGISTRY.keys()))
+    resolved = _resolve_pack_id(pack_id)
+    if resolved not in _REGISTRY:
+        available_ids = sorted(set(_REGISTRY.keys()) | set(_ALIASES.keys()))
+        available = ", ".join(available_ids)
         raise KeyError(f"Unknown pack '{pack_id}'. Available: {available}")
-    return _REGISTRY[pack_id]
+    return _REGISTRY[resolved]
 
 
 def list_packs(db: Optional[str] = None) -> List[BugPack]:

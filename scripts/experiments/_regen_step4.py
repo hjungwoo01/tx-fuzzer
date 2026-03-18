@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Re-run only step4 (MASTER_REPORT + MASTER_SUMMARY) from existing CSVs."""
 import sys, csv
 from pathlib import Path

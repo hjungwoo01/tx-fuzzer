@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Plot cumulative state coverage over time from coverage_timeseries.csv."""
 
 from __future__ import annotations

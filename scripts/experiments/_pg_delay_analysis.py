@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deeper PG analysis: what delay patterns find the bug?"""
 import sys, random, time
 sys.path.insert(0, ".")

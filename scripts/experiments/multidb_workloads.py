@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Workload library for multi-DB evaluation (Postgres, MySQL, SQLite)."""
 
 from __future__ import annotations

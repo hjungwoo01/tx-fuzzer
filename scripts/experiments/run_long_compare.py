@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Long-run comparison experiment for schedule-pool evaluation.
 

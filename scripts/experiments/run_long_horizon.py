@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Long-horizon experiment suite for schedule-pool evaluation.
 

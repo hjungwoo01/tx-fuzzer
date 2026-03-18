@@ -43,7 +43,7 @@ from .event_id import get_workload_event_ids
 from .pool import PoolConfig, SchedulePool
 from .mutator import MutationConfig, ScheduleMutator
 from .retention import RetentionPolicy, RetentionReason
-from .base_strategy import BaseStrategy, RandomStrategy
+from .base_strategy import BaseStrategy, HeuristicStrategy, RandomStrategy
 
 
 class SchedulePoolRunner:
@@ -376,6 +376,36 @@ def run_pool_search(
     ))
 
     return coverage_points, trial_results, pool
+
+
+def run_random_pool_search(
+    *,
+    max_delay_ms: float = 100.0,
+    **kwargs: Any,
+) -> Tuple[List[CoveragePoint], List[TrialResult], SchedulePool]:
+    """Run the pool workflow with Random as the fresh-seed scheduler."""
+    return run_pool_search(
+        base_strategy=RandomStrategy(max_delay_ms=max_delay_ms),
+        **kwargs,
+    )
+
+
+def run_heuristic_pool_search(
+    *,
+    k: int = 4,
+    min_delay_ms: float = 5.0,
+    max_delay_ms: float = 50.0,
+    **kwargs: Any,
+) -> Tuple[List[CoveragePoint], List[TrialResult], SchedulePool]:
+    """Run the pool workflow with Heuristic as the fresh-seed scheduler."""
+    return run_pool_search(
+        base_strategy=HeuristicStrategy(
+            k=k,
+            min_delay_ms=min_delay_ms,
+            max_delay_ms=max_delay_ms,
+        ),
+        **kwargs,
+    )
 
 
 def replay_schedule(

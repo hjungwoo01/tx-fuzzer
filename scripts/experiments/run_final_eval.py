@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Final paper-quality evaluation for the schedule-pool workflow.
 
@@ -905,6 +904,7 @@ def run_case_pool_search(
             bugs_found += 1
 
         trial_log.append({
+            "kind": "discover",
             "trial": trial_idx,
             "bug_found": r["bug_found"],
             "canonical_hash": r["canonical_hash"],
@@ -946,12 +946,23 @@ def run_case_pool_search(
                 for _ in range(stabilize_replays):
                     if (time.monotonic() - start) >= duration_s:
                         break
+                    s0 = time.monotonic()
                     sr = trial_fn(delays)
+                    replay_elapsed_ms = (time.monotonic() - s0) * 1000
                     trial_idx += 1
                     unique_states.add(sr["canonical_hash"])
                     if sr["bug_found"]:
                         bugs_found += 1
                         replay_hits += 1
+                    trial_log.append({
+                        "kind": "replay",
+                        "trial": trial_idx,
+                        "bug_found": sr["bug_found"],
+                        "canonical_hash": sr["canonical_hash"],
+                        "elapsed_ms": round(replay_elapsed_ms, 2),
+                        "delay_count": len(candidate.entries),
+                        "total_delay_ms": round(sum(e.delay_ms for e in candidate.entries), 3),
+                    })
                 record.replay_rate_buggy = replay_hits / (stabilize_replays + 1)
 
                 # Focused mutations around bug schedule
@@ -960,7 +971,9 @@ def run_case_pool_search(
                         break
                     mut_sched = mutator.mutate(candidate)
                     mut_delays = mut_sched.to_delay_map()
+                    m0 = time.monotonic()
                     mr = trial_fn(mut_delays)
+                    mut_elapsed_ms = (time.monotonic() - m0) * 1000
                     trial_idx += 1
                     unique_states.add(mr["canonical_hash"])
                     if mr["bug_found"]:
@@ -978,6 +991,15 @@ def run_case_pool_search(
                             bug_reason=mr.get("bug_reason", ""),
                         )
                         retention.accept(mut_rec)
+                    trial_log.append({
+                        "kind": "stabilize_mutation",
+                        "trial": trial_idx,
+                        "bug_found": mr["bug_found"],
+                        "canonical_hash": mr["canonical_hash"],
+                        "elapsed_ms": round(mut_elapsed_ms, 2),
+                        "delay_count": len(mut_sched.entries),
+                        "total_delay_ms": round(sum(e.delay_ms for e in mut_sched.entries), 3),
+                    })
 
     total_time = time.monotonic() - start
 

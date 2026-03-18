@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Multi-DB evaluation runner — orchestrates all experiments.
 

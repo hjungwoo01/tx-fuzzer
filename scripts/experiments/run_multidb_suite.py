@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Multi-DB evaluation suite: coverage growth, case studies, and overhead."""
 
 from __future__ import annotations

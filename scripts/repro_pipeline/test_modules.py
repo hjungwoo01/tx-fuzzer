@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Unit tests for repro_pipeline modules — seed_gen, slicer, minimizer."""
 
 from __future__ import annotations
@@ -186,6 +185,9 @@ def test_registry() -> None:
     # Get specific pack
     p = get_pack("sqlite_narrow_dirty")
     assert p.db == "sqlite"
+    assert get_pack("update_conflict_out").id == "pg_update_conflict_out"
+    assert get_pack("rr_nonexistent_row").id == "mysql_rr_phantom"
+    assert get_pack("narrow_dirty_read").id == "sqlite_narrow_dirty"
 
     # Unknown pack
     try:

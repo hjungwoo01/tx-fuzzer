@@ -1,181 +1,181 @@
 bug,runner,seed,detected,detection_reason,time_to_first_s,trials_to_first,trials_executed,time_budget_s,max_trials,artifact_dir
-write_skew_rr,baseline,1,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0001/baseline
-write_skew_rr,tool,1,True,Both transactions committed and no doctors remained on call (write skew).,0.155122,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0001/tool
-write_skew_rr,tool,2,True,Both transactions committed and no doctors remained on call (write skew).,0.197326,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0002/tool
-write_skew_rr,baseline,2,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0002/baseline
-write_skew_rr,baseline,3,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0003/baseline
-write_skew_rr,tool,3,True,Both transactions committed and no doctors remained on call (write skew).,0.140172,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0003/tool
-write_skew_rr,tool,4,True,Both transactions committed and no doctors remained on call (write skew).,0.096689,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0004/tool
-write_skew_rr,baseline,4,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0004/baseline
-write_skew_rr,baseline,5,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0005/baseline
-write_skew_rr,tool,5,True,Both transactions committed and no doctors remained on call (write skew).,0.325646,5,5,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0005/tool
-write_skew_rr,tool,6,True,Both transactions committed and no doctors remained on call (write skew).,0.125733,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0006/tool
-write_skew_rr,baseline,6,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0006/baseline
-write_skew_rr,baseline,7,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0007/baseline
-write_skew_rr,tool,7,True,Both transactions committed and no doctors remained on call (write skew).,0.189618,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0007/tool
-write_skew_rr,tool,8,True,Both transactions committed and no doctors remained on call (write skew).,0.159821,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0008/tool
-write_skew_rr,baseline,8,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0008/baseline
-write_skew_rr,baseline,9,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0009/baseline
-write_skew_rr,tool,9,True,Both transactions committed and no doctors remained on call (write skew).,0.252708,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0009/tool
-write_skew_rr,tool,10,True,Both transactions committed and no doctors remained on call (write skew).,0.113628,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0010/tool
-write_skew_rr,baseline,10,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0010/baseline
-write_skew_rr,baseline,11,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0011/baseline
-write_skew_rr,tool,11,True,Both transactions committed and no doctors remained on call (write skew).,0.132779,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0011/tool
-write_skew_rr,tool,12,True,Both transactions committed and no doctors remained on call (write skew).,0.190395,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0012/tool
-write_skew_rr,baseline,12,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0012/baseline
-write_skew_rr,baseline,13,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0013/baseline
-write_skew_rr,tool,13,True,Both transactions committed and no doctors remained on call (write skew).,0.123837,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0013/tool
-write_skew_rr,tool,14,True,Both transactions committed and no doctors remained on call (write skew).,0.143426,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0014/tool
-write_skew_rr,baseline,14,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0014/baseline
-write_skew_rr,baseline,15,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0015/baseline
-write_skew_rr,tool,15,True,Both transactions committed and no doctors remained on call (write skew).,0.213173,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0015/tool
-write_skew_rr,tool,16,True,Both transactions committed and no doctors remained on call (write skew).,0.129168,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0016/tool
-write_skew_rr,baseline,16,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0016/baseline
-write_skew_rr,baseline,17,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0017/baseline
-write_skew_rr,tool,17,True,Both transactions committed and no doctors remained on call (write skew).,0.255557,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0017/tool
-write_skew_rr,tool,18,True,Both transactions committed and no doctors remained on call (write skew).,0.136759,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0018/tool
-write_skew_rr,baseline,18,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0018/baseline
-write_skew_rr,baseline,19,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0019/baseline
-write_skew_rr,tool,19,True,Both transactions committed and no doctors remained on call (write skew).,0.157811,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0019/tool
-write_skew_rr,tool,20,True,Both transactions committed and no doctors remained on call (write skew).,0.190811,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0020/tool
-write_skew_rr,baseline,20,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0020/baseline
-write_skew_rr,baseline,21,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0021/baseline
-write_skew_rr,tool,21,True,Both transactions committed and no doctors remained on call (write skew).,0.145983,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0021/tool
-write_skew_rr,tool,22,True,Both transactions committed and no doctors remained on call (write skew).,0.213629,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0022/tool
-write_skew_rr,baseline,22,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0022/baseline
-write_skew_rr,baseline,23,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0023/baseline
-write_skew_rr,tool,23,True,Both transactions committed and no doctors remained on call (write skew).,0.36494,6,6,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0023/tool
-write_skew_rr,tool,24,True,Both transactions committed and no doctors remained on call (write skew).,0.147124,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0024/tool
-write_skew_rr,baseline,24,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0024/baseline
-write_skew_rr,baseline,25,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0025/baseline
-write_skew_rr,tool,25,True,Both transactions committed and no doctors remained on call (write skew).,0.158435,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0025/tool
-write_skew_rr,tool,26,True,Both transactions committed and no doctors remained on call (write skew).,0.140004,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0026/tool
-write_skew_rr,baseline,26,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0026/baseline
-write_skew_rr,baseline,27,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0027/baseline
-write_skew_rr,tool,27,True,Both transactions committed and no doctors remained on call (write skew).,0.126705,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0027/tool
-write_skew_rr,tool,28,True,Both transactions committed and no doctors remained on call (write skew).,0.099047,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0028/tool
-write_skew_rr,baseline,28,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0028/baseline
-write_skew_rr,baseline,29,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0029/baseline
-write_skew_rr,tool,29,True,Both transactions committed and no doctors remained on call (write skew).,0.416694,6,6,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0029/tool
-write_skew_rr,tool,30,True,Both transactions committed and no doctors remained on call (write skew).,0.215405,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0030/tool
-write_skew_rr,baseline,30,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0030/baseline
-lost_update_rc,baseline,1,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0001/baseline
-lost_update_rc,tool,1,True,Both transactions committed and one increment was lost (final value = 1).,0.161189,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0001/tool
-lost_update_rc,tool,2,True,Both transactions committed and one increment was lost (final value = 1).,0.210648,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0002/tool
-lost_update_rc,baseline,2,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0002/baseline
-lost_update_rc,baseline,3,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0003/baseline
-lost_update_rc,tool,3,True,Both transactions committed and one increment was lost (final value = 1).,0.146672,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0003/tool
-lost_update_rc,tool,4,True,Both transactions committed and one increment was lost (final value = 1).,0.100506,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0004/tool
-lost_update_rc,baseline,4,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0004/baseline
-lost_update_rc,baseline,5,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0005/baseline
-lost_update_rc,tool,5,True,Both transactions committed and one increment was lost (final value = 1).,0.365738,5,5,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0005/tool
-lost_update_rc,tool,6,True,Both transactions committed and one increment was lost (final value = 1).,0.130038,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0006/tool
-lost_update_rc,baseline,6,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0006/baseline
-lost_update_rc,baseline,7,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0007/baseline
-lost_update_rc,tool,7,True,Both transactions committed and one increment was lost (final value = 1).,0.19702,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0007/tool
-lost_update_rc,tool,8,True,Both transactions committed and one increment was lost (final value = 1).,0.163462,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0008/tool
-lost_update_rc,baseline,8,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0008/baseline
-lost_update_rc,baseline,9,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0009/baseline
-lost_update_rc,tool,9,True,Both transactions committed and one increment was lost (final value = 1).,0.207517,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0009/tool
-lost_update_rc,tool,10,True,Both transactions committed and one increment was lost (final value = 1).,0.313385,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0010/tool
-lost_update_rc,baseline,10,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0010/baseline
-lost_update_rc,baseline,11,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0011/baseline
-lost_update_rc,tool,11,True,Both transactions committed and one increment was lost (final value = 1).,0.235717,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0011/tool
-lost_update_rc,tool,12,True,Both transactions committed and one increment was lost (final value = 1).,0.257215,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0012/tool
-lost_update_rc,baseline,12,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0012/baseline
-lost_update_rc,baseline,13,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0013/baseline
-lost_update_rc,tool,13,True,Both transactions committed and one increment was lost (final value = 1).,0.127765,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0013/tool
-lost_update_rc,tool,14,True,Both transactions committed and one increment was lost (final value = 1).,0.148215,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0014/tool
-lost_update_rc,baseline,14,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0014/baseline
-lost_update_rc,baseline,15,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0015/baseline
-lost_update_rc,tool,15,True,Both transactions committed and one increment was lost (final value = 1).,0.22446,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0015/tool
-lost_update_rc,tool,16,True,Both transactions committed and one increment was lost (final value = 1).,0.131741,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0016/tool
-lost_update_rc,baseline,16,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0016/baseline
-lost_update_rc,baseline,17,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0017/baseline
-lost_update_rc,tool,17,True,Both transactions committed and one increment was lost (final value = 1).,0.279838,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0017/tool
-lost_update_rc,tool,18,True,Both transactions committed and one increment was lost (final value = 1).,0.14094,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0018/tool
-lost_update_rc,baseline,18,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0018/baseline
-lost_update_rc,baseline,19,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0019/baseline
-lost_update_rc,tool,19,True,Both transactions committed and one increment was lost (final value = 1).,0.172963,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0019/tool
-lost_update_rc,tool,20,True,Both transactions committed and one increment was lost (final value = 1).,0.201062,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0020/tool
-lost_update_rc,baseline,20,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0020/baseline
-lost_update_rc,baseline,21,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0021/baseline
-lost_update_rc,tool,21,True,Both transactions committed and one increment was lost (final value = 1).,0.149476,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0021/tool
-lost_update_rc,tool,22,True,Both transactions committed and one increment was lost (final value = 1).,0.232012,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0022/tool
-lost_update_rc,baseline,22,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0022/baseline
-lost_update_rc,baseline,23,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0023/baseline
-lost_update_rc,tool,23,True,Both transactions committed and one increment was lost (final value = 1).,0.394154,6,6,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0023/tool
-lost_update_rc,tool,24,True,Both transactions committed and one increment was lost (final value = 1).,0.151908,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0024/tool
-lost_update_rc,baseline,24,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0024/baseline
-lost_update_rc,baseline,25,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0025/baseline
-lost_update_rc,tool,25,True,Both transactions committed and one increment was lost (final value = 1).,0.163424,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0025/tool
-lost_update_rc,tool,26,True,Both transactions committed and one increment was lost (final value = 1).,0.156789,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0026/tool
-lost_update_rc,baseline,26,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0026/baseline
-lost_update_rc,baseline,27,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0027/baseline
-lost_update_rc,tool,27,True,Both transactions committed and one increment was lost (final value = 1).,0.132319,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0027/tool
-lost_update_rc,tool,28,True,Both transactions committed and one increment was lost (final value = 1).,0.210204,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0028/tool
-lost_update_rc,baseline,28,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0028/baseline
-lost_update_rc,baseline,29,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0029/baseline
-lost_update_rc,tool,29,True,Both transactions committed and one increment was lost (final value = 1).,0.243386,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0029/tool
-lost_update_rc,tool,30,True,Both transactions committed and one increment was lost (final value = 1).,0.245317,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0030/tool
-lost_update_rc,baseline,30,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0030/baseline
-serializable_write_skew,baseline,1,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0001/baseline
-serializable_write_skew,tool,1,True,Observed serialization_failure (SQLSTATE 40001).,0.153898,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0001/tool
-serializable_write_skew,tool,2,True,Observed serialization_failure (SQLSTATE 40001).,0.194162,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0002/tool
-serializable_write_skew,baseline,2,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0002/baseline
-serializable_write_skew,baseline,3,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0003/baseline
-serializable_write_skew,tool,3,True,Observed serialization_failure (SQLSTATE 40001).,0.138657,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0003/tool
-serializable_write_skew,tool,4,True,Observed serialization_failure (SQLSTATE 40001).,0.093551,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0004/tool
-serializable_write_skew,baseline,4,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0004/baseline
-serializable_write_skew,baseline,5,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0005/baseline
-serializable_write_skew,tool,5,True,Observed serialization_failure (SQLSTATE 40001).,0.323739,5,5,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0005/tool
-serializable_write_skew,tool,6,True,Observed serialization_failure (SQLSTATE 40001).,0.123829,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0006/tool
-serializable_write_skew,baseline,6,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0006/baseline
-serializable_write_skew,baseline,7,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0007/baseline
-serializable_write_skew,tool,7,True,Observed serialization_failure (SQLSTATE 40001).,0.182667,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0007/tool
-serializable_write_skew,tool,8,True,Observed serialization_failure (SQLSTATE 40001).,0.15631,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0008/tool
-serializable_write_skew,baseline,8,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0008/baseline
-serializable_write_skew,baseline,9,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0009/baseline
-serializable_write_skew,tool,9,True,Observed serialization_failure (SQLSTATE 40001).,0.248689,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0009/tool
-serializable_write_skew,tool,10,True,Observed serialization_failure (SQLSTATE 40001).,0.111772,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0010/tool
-serializable_write_skew,baseline,10,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0010/baseline
-serializable_write_skew,baseline,11,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0011/baseline
-serializable_write_skew,tool,11,True,Observed serialization_failure (SQLSTATE 40001).,0.129689,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0011/tool
-serializable_write_skew,tool,12,True,Observed serialization_failure (SQLSTATE 40001).,0.18706,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0012/tool
-serializable_write_skew,baseline,12,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0012/baseline
-serializable_write_skew,baseline,13,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0013/baseline
-serializable_write_skew,tool,13,True,Observed serialization_failure (SQLSTATE 40001).,0.122137,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0013/tool
-serializable_write_skew,tool,14,True,Observed serialization_failure (SQLSTATE 40001).,0.143107,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0014/tool
-serializable_write_skew,baseline,14,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0014/baseline
-serializable_write_skew,baseline,15,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0015/baseline
-serializable_write_skew,tool,15,True,Observed serialization_failure (SQLSTATE 40001).,0.204317,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0015/tool
-serializable_write_skew,tool,16,True,Observed serialization_failure (SQLSTATE 40001).,0.124932,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0016/tool
-serializable_write_skew,baseline,16,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0016/baseline
-serializable_write_skew,baseline,17,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0017/baseline
-serializable_write_skew,tool,17,True,Observed serialization_failure (SQLSTATE 40001).,0.247842,4,4,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0017/tool
-serializable_write_skew,tool,18,True,Observed serialization_failure (SQLSTATE 40001).,0.135178,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0018/tool
-serializable_write_skew,baseline,18,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0018/baseline
-serializable_write_skew,baseline,19,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0019/baseline
-serializable_write_skew,tool,19,True,Observed serialization_failure (SQLSTATE 40001).,0.156056,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0019/tool
-serializable_write_skew,tool,20,True,Observed serialization_failure (SQLSTATE 40001).,0.184862,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0020/tool
-serializable_write_skew,baseline,20,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0020/baseline
-serializable_write_skew,baseline,21,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0021/baseline
-serializable_write_skew,tool,21,True,Observed serialization_failure (SQLSTATE 40001).,0.141938,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0021/tool
-serializable_write_skew,tool,22,True,Observed serialization_failure (SQLSTATE 40001).,0.202964,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0022/tool
-serializable_write_skew,baseline,22,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0022/baseline
-serializable_write_skew,baseline,23,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0023/baseline
-serializable_write_skew,tool,23,True,Observed serialization_failure (SQLSTATE 40001).,0.312083,5,5,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0023/tool
-serializable_write_skew,tool,24,True,Observed serialization_failure (SQLSTATE 40001).,0.145424,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0024/tool
-serializable_write_skew,baseline,24,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0024/baseline
-serializable_write_skew,baseline,25,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0025/baseline
-serializable_write_skew,tool,25,True,Observed serialization_failure (SQLSTATE 40001).,0.156481,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0025/tool
-serializable_write_skew,tool,26,True,Observed serialization_failure (SQLSTATE 40001).,0.13838,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0026/tool
-serializable_write_skew,baseline,26,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0026/baseline
-serializable_write_skew,baseline,27,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0027/baseline
-serializable_write_skew,tool,27,True,Observed serialization_failure (SQLSTATE 40001).,0.125866,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0027/tool
-serializable_write_skew,tool,28,True,Observed serialization_failure (SQLSTATE 40001).,0.096862,2,2,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0028/tool
-serializable_write_skew,baseline,28,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0028/baseline
-serializable_write_skew,baseline,29,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0029/baseline
-serializable_write_skew,tool,29,True,Observed serialization_failure (SQLSTATE 40001).,0.409865,6,6,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0029/tool
-serializable_write_skew,tool,30,True,Observed serialization_failure (SQLSTATE 40001).,0.214865,3,3,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0030/tool
-serializable_write_skew,baseline,30,False,budget_exhausted,,,40,30.0,40,/home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0030/baseline
+write_skew_rr,baseline,1,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0001/baseline
+write_skew_rr,tool,1,True,Both transactions committed and no doctors remained on call (write skew).,0.155122,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0001/tool
+write_skew_rr,tool,2,True,Both transactions committed and no doctors remained on call (write skew).,0.197326,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0002/tool
+write_skew_rr,baseline,2,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0002/baseline
+write_skew_rr,baseline,3,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0003/baseline
+write_skew_rr,tool,3,True,Both transactions committed and no doctors remained on call (write skew).,0.140172,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0003/tool
+write_skew_rr,tool,4,True,Both transactions committed and no doctors remained on call (write skew).,0.096689,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0004/tool
+write_skew_rr,baseline,4,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0004/baseline
+write_skew_rr,baseline,5,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0005/baseline
+write_skew_rr,tool,5,True,Both transactions committed and no doctors remained on call (write skew).,0.325646,5,5,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0005/tool
+write_skew_rr,tool,6,True,Both transactions committed and no doctors remained on call (write skew).,0.125733,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0006/tool
+write_skew_rr,baseline,6,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0006/baseline
+write_skew_rr,baseline,7,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0007/baseline
+write_skew_rr,tool,7,True,Both transactions committed and no doctors remained on call (write skew).,0.189618,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0007/tool
+write_skew_rr,tool,8,True,Both transactions committed and no doctors remained on call (write skew).,0.159821,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0008/tool
+write_skew_rr,baseline,8,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0008/baseline
+write_skew_rr,baseline,9,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0009/baseline
+write_skew_rr,tool,9,True,Both transactions committed and no doctors remained on call (write skew).,0.252708,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0009/tool
+write_skew_rr,tool,10,True,Both transactions committed and no doctors remained on call (write skew).,0.113628,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0010/tool
+write_skew_rr,baseline,10,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0010/baseline
+write_skew_rr,baseline,11,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0011/baseline
+write_skew_rr,tool,11,True,Both transactions committed and no doctors remained on call (write skew).,0.132779,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0011/tool
+write_skew_rr,tool,12,True,Both transactions committed and no doctors remained on call (write skew).,0.190395,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0012/tool
+write_skew_rr,baseline,12,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0012/baseline
+write_skew_rr,baseline,13,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0013/baseline
+write_skew_rr,tool,13,True,Both transactions committed and no doctors remained on call (write skew).,0.123837,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0013/tool
+write_skew_rr,tool,14,True,Both transactions committed and no doctors remained on call (write skew).,0.143426,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0014/tool
+write_skew_rr,baseline,14,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0014/baseline
+write_skew_rr,baseline,15,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0015/baseline
+write_skew_rr,tool,15,True,Both transactions committed and no doctors remained on call (write skew).,0.213173,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0015/tool
+write_skew_rr,tool,16,True,Both transactions committed and no doctors remained on call (write skew).,0.129168,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0016/tool
+write_skew_rr,baseline,16,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0016/baseline
+write_skew_rr,baseline,17,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0017/baseline
+write_skew_rr,tool,17,True,Both transactions committed and no doctors remained on call (write skew).,0.255557,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0017/tool
+write_skew_rr,tool,18,True,Both transactions committed and no doctors remained on call (write skew).,0.136759,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0018/tool
+write_skew_rr,baseline,18,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0018/baseline
+write_skew_rr,baseline,19,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0019/baseline
+write_skew_rr,tool,19,True,Both transactions committed and no doctors remained on call (write skew).,0.157811,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0019/tool
+write_skew_rr,tool,20,True,Both transactions committed and no doctors remained on call (write skew).,0.190811,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0020/tool
+write_skew_rr,baseline,20,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0020/baseline
+write_skew_rr,baseline,21,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0021/baseline
+write_skew_rr,tool,21,True,Both transactions committed and no doctors remained on call (write skew).,0.145983,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0021/tool
+write_skew_rr,tool,22,True,Both transactions committed and no doctors remained on call (write skew).,0.213629,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0022/tool
+write_skew_rr,baseline,22,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0022/baseline
+write_skew_rr,baseline,23,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0023/baseline
+write_skew_rr,tool,23,True,Both transactions committed and no doctors remained on call (write skew).,0.36494,6,6,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0023/tool
+write_skew_rr,tool,24,True,Both transactions committed and no doctors remained on call (write skew).,0.147124,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0024/tool
+write_skew_rr,baseline,24,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0024/baseline
+write_skew_rr,baseline,25,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0025/baseline
+write_skew_rr,tool,25,True,Both transactions committed and no doctors remained on call (write skew).,0.158435,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0025/tool
+write_skew_rr,tool,26,True,Both transactions committed and no doctors remained on call (write skew).,0.140004,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0026/tool
+write_skew_rr,baseline,26,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0026/baseline
+write_skew_rr,baseline,27,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0027/baseline
+write_skew_rr,tool,27,True,Both transactions committed and no doctors remained on call (write skew).,0.126705,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0027/tool
+write_skew_rr,tool,28,True,Both transactions committed and no doctors remained on call (write skew).,0.099047,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0028/tool
+write_skew_rr,baseline,28,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0028/baseline
+write_skew_rr,baseline,29,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0029/baseline
+write_skew_rr,tool,29,True,Both transactions committed and no doctors remained on call (write skew).,0.416694,6,6,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0029/tool
+write_skew_rr,tool,30,True,Both transactions committed and no doctors remained on call (write skew).,0.215405,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0030/tool
+write_skew_rr,baseline,30,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/write_skew_rr/seed_0030/baseline
+lost_update_rc,baseline,1,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0001/baseline
+lost_update_rc,tool,1,True,Both transactions committed and one increment was lost (final value = 1).,0.161189,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0001/tool
+lost_update_rc,tool,2,True,Both transactions committed and one increment was lost (final value = 1).,0.210648,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0002/tool
+lost_update_rc,baseline,2,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0002/baseline
+lost_update_rc,baseline,3,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0003/baseline
+lost_update_rc,tool,3,True,Both transactions committed and one increment was lost (final value = 1).,0.146672,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0003/tool
+lost_update_rc,tool,4,True,Both transactions committed and one increment was lost (final value = 1).,0.100506,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0004/tool
+lost_update_rc,baseline,4,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0004/baseline
+lost_update_rc,baseline,5,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0005/baseline
+lost_update_rc,tool,5,True,Both transactions committed and one increment was lost (final value = 1).,0.365738,5,5,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0005/tool
+lost_update_rc,tool,6,True,Both transactions committed and one increment was lost (final value = 1).,0.130038,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0006/tool
+lost_update_rc,baseline,6,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0006/baseline
+lost_update_rc,baseline,7,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0007/baseline
+lost_update_rc,tool,7,True,Both transactions committed and one increment was lost (final value = 1).,0.19702,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0007/tool
+lost_update_rc,tool,8,True,Both transactions committed and one increment was lost (final value = 1).,0.163462,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0008/tool
+lost_update_rc,baseline,8,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0008/baseline
+lost_update_rc,baseline,9,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0009/baseline
+lost_update_rc,tool,9,True,Both transactions committed and one increment was lost (final value = 1).,0.207517,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0009/tool
+lost_update_rc,tool,10,True,Both transactions committed and one increment was lost (final value = 1).,0.313385,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0010/tool
+lost_update_rc,baseline,10,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0010/baseline
+lost_update_rc,baseline,11,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0011/baseline
+lost_update_rc,tool,11,True,Both transactions committed and one increment was lost (final value = 1).,0.235717,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0011/tool
+lost_update_rc,tool,12,True,Both transactions committed and one increment was lost (final value = 1).,0.257215,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0012/tool
+lost_update_rc,baseline,12,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0012/baseline
+lost_update_rc,baseline,13,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0013/baseline
+lost_update_rc,tool,13,True,Both transactions committed and one increment was lost (final value = 1).,0.127765,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0013/tool
+lost_update_rc,tool,14,True,Both transactions committed and one increment was lost (final value = 1).,0.148215,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0014/tool
+lost_update_rc,baseline,14,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0014/baseline
+lost_update_rc,baseline,15,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0015/baseline
+lost_update_rc,tool,15,True,Both transactions committed and one increment was lost (final value = 1).,0.22446,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0015/tool
+lost_update_rc,tool,16,True,Both transactions committed and one increment was lost (final value = 1).,0.131741,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0016/tool
+lost_update_rc,baseline,16,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0016/baseline
+lost_update_rc,baseline,17,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0017/baseline
+lost_update_rc,tool,17,True,Both transactions committed and one increment was lost (final value = 1).,0.279838,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0017/tool
+lost_update_rc,tool,18,True,Both transactions committed and one increment was lost (final value = 1).,0.14094,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0018/tool
+lost_update_rc,baseline,18,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0018/baseline
+lost_update_rc,baseline,19,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0019/baseline
+lost_update_rc,tool,19,True,Both transactions committed and one increment was lost (final value = 1).,0.172963,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0019/tool
+lost_update_rc,tool,20,True,Both transactions committed and one increment was lost (final value = 1).,0.201062,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0020/tool
+lost_update_rc,baseline,20,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0020/baseline
+lost_update_rc,baseline,21,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0021/baseline
+lost_update_rc,tool,21,True,Both transactions committed and one increment was lost (final value = 1).,0.149476,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0021/tool
+lost_update_rc,tool,22,True,Both transactions committed and one increment was lost (final value = 1).,0.232012,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0022/tool
+lost_update_rc,baseline,22,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0022/baseline
+lost_update_rc,baseline,23,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0023/baseline
+lost_update_rc,tool,23,True,Both transactions committed and one increment was lost (final value = 1).,0.394154,6,6,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0023/tool
+lost_update_rc,tool,24,True,Both transactions committed and one increment was lost (final value = 1).,0.151908,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0024/tool
+lost_update_rc,baseline,24,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0024/baseline
+lost_update_rc,baseline,25,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0025/baseline
+lost_update_rc,tool,25,True,Both transactions committed and one increment was lost (final value = 1).,0.163424,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0025/tool
+lost_update_rc,tool,26,True,Both transactions committed and one increment was lost (final value = 1).,0.156789,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0026/tool
+lost_update_rc,baseline,26,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0026/baseline
+lost_update_rc,baseline,27,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0027/baseline
+lost_update_rc,tool,27,True,Both transactions committed and one increment was lost (final value = 1).,0.132319,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0027/tool
+lost_update_rc,tool,28,True,Both transactions committed and one increment was lost (final value = 1).,0.210204,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0028/tool
+lost_update_rc,baseline,28,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0028/baseline
+lost_update_rc,baseline,29,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0029/baseline
+lost_update_rc,tool,29,True,Both transactions committed and one increment was lost (final value = 1).,0.243386,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0029/tool
+lost_update_rc,tool,30,True,Both transactions committed and one increment was lost (final value = 1).,0.245317,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0030/tool
+lost_update_rc,baseline,30,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/lost_update_rc/seed_0030/baseline
+serializable_write_skew,baseline,1,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0001/baseline
+serializable_write_skew,tool,1,True,Observed serialization_failure (SQLSTATE 40001).,0.153898,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0001/tool
+serializable_write_skew,tool,2,True,Observed serialization_failure (SQLSTATE 40001).,0.194162,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0002/tool
+serializable_write_skew,baseline,2,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0002/baseline
+serializable_write_skew,baseline,3,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0003/baseline
+serializable_write_skew,tool,3,True,Observed serialization_failure (SQLSTATE 40001).,0.138657,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0003/tool
+serializable_write_skew,tool,4,True,Observed serialization_failure (SQLSTATE 40001).,0.093551,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0004/tool
+serializable_write_skew,baseline,4,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0004/baseline
+serializable_write_skew,baseline,5,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0005/baseline
+serializable_write_skew,tool,5,True,Observed serialization_failure (SQLSTATE 40001).,0.323739,5,5,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0005/tool
+serializable_write_skew,tool,6,True,Observed serialization_failure (SQLSTATE 40001).,0.123829,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0006/tool
+serializable_write_skew,baseline,6,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0006/baseline
+serializable_write_skew,baseline,7,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0007/baseline
+serializable_write_skew,tool,7,True,Observed serialization_failure (SQLSTATE 40001).,0.182667,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0007/tool
+serializable_write_skew,tool,8,True,Observed serialization_failure (SQLSTATE 40001).,0.15631,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0008/tool
+serializable_write_skew,baseline,8,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0008/baseline
+serializable_write_skew,baseline,9,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0009/baseline
+serializable_write_skew,tool,9,True,Observed serialization_failure (SQLSTATE 40001).,0.248689,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0009/tool
+serializable_write_skew,tool,10,True,Observed serialization_failure (SQLSTATE 40001).,0.111772,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0010/tool
+serializable_write_skew,baseline,10,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0010/baseline
+serializable_write_skew,baseline,11,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0011/baseline
+serializable_write_skew,tool,11,True,Observed serialization_failure (SQLSTATE 40001).,0.129689,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0011/tool
+serializable_write_skew,tool,12,True,Observed serialization_failure (SQLSTATE 40001).,0.18706,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0012/tool
+serializable_write_skew,baseline,12,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0012/baseline
+serializable_write_skew,baseline,13,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0013/baseline
+serializable_write_skew,tool,13,True,Observed serialization_failure (SQLSTATE 40001).,0.122137,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0013/tool
+serializable_write_skew,tool,14,True,Observed serialization_failure (SQLSTATE 40001).,0.143107,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0014/tool
+serializable_write_skew,baseline,14,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0014/baseline
+serializable_write_skew,baseline,15,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0015/baseline
+serializable_write_skew,tool,15,True,Observed serialization_failure (SQLSTATE 40001).,0.204317,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0015/tool
+serializable_write_skew,tool,16,True,Observed serialization_failure (SQLSTATE 40001).,0.124932,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0016/tool
+serializable_write_skew,baseline,16,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0016/baseline
+serializable_write_skew,baseline,17,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0017/baseline
+serializable_write_skew,tool,17,True,Observed serialization_failure (SQLSTATE 40001).,0.247842,4,4,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0017/tool
+serializable_write_skew,tool,18,True,Observed serialization_failure (SQLSTATE 40001).,0.135178,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0018/tool
+serializable_write_skew,baseline,18,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0018/baseline
+serializable_write_skew,baseline,19,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0019/baseline
+serializable_write_skew,tool,19,True,Observed serialization_failure (SQLSTATE 40001).,0.156056,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0019/tool
+serializable_write_skew,tool,20,True,Observed serialization_failure (SQLSTATE 40001).,0.184862,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0020/tool
+serializable_write_skew,baseline,20,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0020/baseline
+serializable_write_skew,baseline,21,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0021/baseline
+serializable_write_skew,tool,21,True,Observed serialization_failure (SQLSTATE 40001).,0.141938,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0021/tool
+serializable_write_skew,tool,22,True,Observed serialization_failure (SQLSTATE 40001).,0.202964,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0022/tool
+serializable_write_skew,baseline,22,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0022/baseline
+serializable_write_skew,baseline,23,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0023/baseline
+serializable_write_skew,tool,23,True,Observed serialization_failure (SQLSTATE 40001).,0.312083,5,5,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0023/tool
+serializable_write_skew,tool,24,True,Observed serialization_failure (SQLSTATE 40001).,0.145424,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0024/tool
+serializable_write_skew,baseline,24,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0024/baseline
+serializable_write_skew,baseline,25,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0025/baseline
+serializable_write_skew,tool,25,True,Observed serialization_failure (SQLSTATE 40001).,0.156481,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0025/tool
+serializable_write_skew,tool,26,True,Observed serialization_failure (SQLSTATE 40001).,0.13838,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0026/tool
+serializable_write_skew,baseline,26,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0026/baseline
+serializable_write_skew,baseline,27,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0027/baseline
+serializable_write_skew,tool,27,True,Observed serialization_failure (SQLSTATE 40001).,0.125866,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0027/tool
+serializable_write_skew,tool,28,True,Observed serialization_failure (SQLSTATE 40001).,0.096862,2,2,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0028/tool
+serializable_write_skew,baseline,28,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0028/baseline
+serializable_write_skew,baseline,29,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0029/baseline
+serializable_write_skew,tool,29,True,Observed serialization_failure (SQLSTATE 40001).,0.409865,6,6,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0029/tool
+serializable_write_skew,tool,30,True,Observed serialization_failure (SQLSTATE 40001).,0.214865,3,3,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0030/tool
+serializable_write_skew,baseline,30,False,budget_exhausted,,,40,30.0,40,bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/serializable_write_skew/seed_0030/baseline

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Repro Pipeline — unified concurrency-bug discovery + minimization + replay.
 

@@ -1,12 +1,19 @@
-#!/usr/bin/env python3
 """
-Headline Evaluation Runner — MySQL + SQLite
+Headline Evaluation Runner — MySQL + SQLite Subset
 
 Produces comparative, fair, quantified evidence showing:
   1) Schedule sensitivity (stress rarely finds the anomaly)
   2) Heuristic advantage (heuristic finds it routinely)
   3) Reproducibility (20/20 on buggy, 0/20 on control)
   4) Minimization value (automatic distillation)
+
+This runner intentionally covers the two hand-crafted headline packs with
+direct event-gated trial functions:
+  - `mysql_rr_phantom`
+  - `sqlite_narrow_dirty`
+
+For the full paper-complete three-DB headline evaluation, use:
+  `python scripts/experiments/run_dbtest_artifact.py`
 
 Output directory: results/headlines_mysql_sqlite_<YYYYMMDD_HHMMSS>/
   - discovery_runs.csv
@@ -193,6 +200,7 @@ def write_inventory(output_dir: Path, mysql_dsn: str, sqlite_dsn: str) -> None:
     with open(inv_path, "w", encoding="utf-8") as f:
         f.write("Headline Evaluation — Inventory\n")
         f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write("Scope: MySQL + SQLite subset only. For the paper-complete 3-DB run, use scripts/experiments/run_dbtest_artifact.py\n\n")
         f.write("== Packs ==\n")
         for pid, info in PACKS.items():
             f.write(f"  {pid}: {info['description']}\n")
@@ -621,7 +629,7 @@ def generate_headline_report(
     """Generate HEADLINE_REPORT.md."""
     lines: List[str] = []
 
-    lines.append("# Headline Evaluation Report — MySQL + SQLite")
+    lines.append("# Headline Evaluation Report — MySQL + SQLite Subset")
     lines.append("")
     lines.append(f"**Generated**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
     lines.append(f"**Budget**: {budget_s}s per rep, {MAX_TRIALS} max trials, {reps} reps")
@@ -866,7 +874,9 @@ def generate_headline_report(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Headline evaluation for MySQL + SQLite")
+    parser = argparse.ArgumentParser(
+        description="Headline evaluation for the MySQL + SQLite subset; use run_dbtest_artifact.py for the full 3-DB paper run"
+    )
     parser.add_argument("--mysql-dsn", default=os.getenv("MYSQL_DSN", MYSQL_DSN_DEFAULT))
     parser.add_argument("--sqlite-dsn", default=os.getenv("SQLITE_DSN", SQLITE_DSN_DEFAULT))
     parser.add_argument("--budget", type=float, default=DEFAULT_BUDGET_S, help="Budget per rep in seconds")
@@ -883,7 +893,7 @@ def main() -> int:
     logger = CommandLogger(output_dir / "commands.log")
 
     print(f"╔══════════════════════════════════════════════════════════╗")
-    print(f"║       HEADLINE EVALUATION — MySQL + SQLite             ║")
+    print(f"║    HEADLINE EVALUATION — MySQL + SQLite SUBSET        ║")
     print(f"╠══════════════════════════════════════════════════════════╣")
     print(f"║  Output: {str(output_dir):<48s}║")
     print(f"║  Budget: {args.budget}s × {args.reps} reps × {len(STRATEGIES)} strategies{' '*(27-len(str(args.budget))-len(str(args.reps)))}║")

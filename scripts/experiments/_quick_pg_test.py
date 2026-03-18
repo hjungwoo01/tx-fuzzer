@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Quick sanity test: does the spread mode find PG bugs?"""
 import sys, random, time
 sys.path.insert(0, ".")

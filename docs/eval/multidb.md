@@ -45,7 +45,7 @@ Planning note:
 3. Python dependencies installed in your environment:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 -m pip install -r requirements.txt
 ```
 
@@ -74,7 +74,7 @@ Notes:
 Run everything (bring up containers, wait for health, run quick suite):
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 ./scripts/repro_all.sh
 ```
 
@@ -101,21 +101,21 @@ Main artifacts:
 Quick:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 ./scripts/experiments/run_multidb_quick.sh
 ```
 
 Long:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 scripts/experiments/run_multidb_suite.py --profile long --output-dir results/multidb_long
 ```
 
 Smoke:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 scripts/experiments/run_multidb_suite.py --profile quick --smoke --output-dir results/multidb_quick_smoke
 ```
 
@@ -152,7 +152,7 @@ export MYSQL_8_0_34_DSN="mysql://root:root@127.0.0.1:33080/test"
 ### 8.1 Static and Import Checks
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 -m py_compile \
   scripts/adapters.py \
   scripts/run_litmus.py \
@@ -166,7 +166,7 @@ python3 -m py_compile \
 ### 8.2 Unit-ish Canonical Hash Tests
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 -m pytest -q tests/test_multidb_canonical_hash.py
 ```
 
@@ -181,7 +181,7 @@ This validates:
 Check new CLI options:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 scripts/replay_litmus.py --help
 ```
 
@@ -193,7 +193,7 @@ You should see:
 Quick SQLite replay smoke:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 cat > /tmp/sqlite_trace.json <<'JSON'
 [
   {"event_id":"c0_begin","client_id":0,"type":"begin","sql":"BEGIN"},
@@ -211,14 +211,14 @@ python3 scripts/replay_litmus.py \
 ### 8.4 Litmus Adapter Routing (SQLite)
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 scripts/run_litmus.py --target sqlite --test lost_update --dsn /tmp/litmus.sqlite
 ```
 
 ### 8.5 End-to-End Smoke Suite
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 scripts/experiments/run_multidb_suite.py --profile quick --smoke --output-dir results/multidb_quick_smoke
 ```
 
@@ -234,7 +234,7 @@ ls results/multidb_quick_smoke/plots/coverage_*.png
 ### 8.6 Full Quick E2E
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 time ./scripts/repro_all.sh
 ```
 
@@ -243,7 +243,7 @@ time ./scripts/repro_all.sh
 This confirms the pre-existing `update_conflict_out` flow still works:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 ./scripts/repro_update_conflict_out.sh --compare
 ```
 
@@ -259,7 +259,7 @@ Use these checks after quick or long suite.
 ### 9.1 Coverage CSV and Plot Presence
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 test -f results/multidb_quick/coverage_timeseries.csv
 ls results/multidb_quick/plots/coverage_*.png | head -n 1
 ```
@@ -267,7 +267,7 @@ ls results/multidb_quick/plots/coverage_*.png | head -n 1
 ### 9.2 Control Variants Must Stay Clean
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 - <<'PY'
 import csv, sys
 path='results/multidb_quick/case_studies_summary.csv'
@@ -286,7 +286,7 @@ PY
 ### 9.3 Replay Success (Quick: 3/3 per Stored Artifact)
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 - <<'PY'
 import csv, sys
 path='results/multidb_quick/replay_summary.csv'
@@ -305,7 +305,7 @@ PY
 ### 9.4 Micro Workloads Reach Multiple States
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 python3 - <<'PY'
 import csv
 from collections import defaultdict
@@ -327,7 +327,7 @@ PY
 ### 9.5 Overhead Table Exists
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 test -f results/multidb_quick/overhead.csv
 test -f results/multidb_quick/overhead.md
 ```
@@ -369,6 +369,6 @@ docker logs txf_mysql8_0_34 --tail 50
 Stop and remove multi-DB containers:
 
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 docker compose -f docker-compose-multidb.yml down -v
 ```

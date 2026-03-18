@@ -74,33 +74,9 @@ class RetentionPolicy:
             if bug_key not in self._seen_bugs:
                 return RetentionReason.NEW_BUG
 
-        # 3. Replay improvement: higher buggy replay rate than existing bug schedules
-        if candidate.bug_found and candidate.replay_rate_buggy is not None:
-            existing_bug_schedules = self._pool.list(
-                workload=candidate.workload,
-                db=candidate.db,
-                bug_only=True,
-            )
-            if existing_bug_schedules:
-                best_replay = max(
-                    (r.replay_rate_buggy or 0.0) for r in existing_bug_schedules
-                )
-                if candidate.replay_rate_buggy > best_replay:
-                    return RetentionReason.REPLAY_IMPROVEMENT
-
-        # 4. Smaller schedule preserving bug
-        if candidate.bug_found:
-            existing = self._pool.list(
-                workload=candidate.workload,
-                db=candidate.db,
-                bug_only=True,
-            )
-            for r in existing:
-                if (candidate.delay_count < r.delay_count or
-                        candidate.total_delay_ms < r.total_delay_ms * 0.8):
-                    return RetentionReason.SMALLER_SCHEDULE
-
-        # 5. TTFSR: bug schedule with high replay rate AND low delay count
+        # 3. TTFSR: compact, high-replay bug schedules should be tagged
+        # explicitly instead of being swallowed by the more generic replay /
+        # size heuristics below.
         if candidate.bug_found and candidate.replay_rate_buggy is not None:
             if candidate.replay_rate_buggy >= 0.7 and candidate.delay_count <= 4:
                 existing = self._pool.list(
@@ -120,6 +96,32 @@ class RetentionPolicy:
                         break
                 if not dominated:
                     return RetentionReason.BEST_TTFSR
+
+        # 4. Replay improvement: higher buggy replay rate than existing bug schedules
+        if candidate.bug_found and candidate.replay_rate_buggy is not None:
+            existing_bug_schedules = self._pool.list(
+                workload=candidate.workload,
+                db=candidate.db,
+                bug_only=True,
+            )
+            if existing_bug_schedules:
+                best_replay = max(
+                    (r.replay_rate_buggy or 0.0) for r in existing_bug_schedules
+                )
+                if candidate.replay_rate_buggy > best_replay:
+                    return RetentionReason.REPLAY_IMPROVEMENT
+
+        # 5. Smaller schedule preserving bug
+        if candidate.bug_found:
+            existing = self._pool.list(
+                workload=candidate.workload,
+                db=candidate.db,
+                bug_only=True,
+            )
+            for r in existing:
+                if (candidate.delay_count < r.delay_count or
+                        candidate.total_delay_ms < r.total_delay_ms * 0.8):
+                    return RetentionReason.SMALLER_SCHEDULE
 
         return RetentionReason.NONE
 

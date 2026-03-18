@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from scripts.experiments.db_adapter import make_adapter, DEFAULT_DSNS, ExecResult
 from scripts.experiments.error_taxonomy import ErrorCategory
 from scripts.repro_pipeline.bug_pack import (
-    BugPack, TrialResult, ReplayResult, register_pack,
+    BugPack, TrialResult, ReplayResult, register_alias, register_pack,
 )
 
 
@@ -610,3 +610,14 @@ class SqliteNarrowDirtyPack(BugPack):
 register_pack(PgUpdateConflictOutPack())
 register_pack(MysqlRrPhantomPack())
 register_pack(SqliteNarrowDirtyPack())
+
+# Paper / legacy aliases used elsewhere in the repo.
+register_alias("update_conflict_out", "pg_update_conflict_out")
+register_alias("postgres_update_conflict_out", "pg_update_conflict_out")
+
+register_alias("rr_nonexistent_row", "mysql_rr_phantom")
+register_alias("mysql_rr_nonexistent", "mysql_rr_phantom")
+register_alias("mysql_rr_nonexistent_row", "mysql_rr_phantom")
+
+register_alias("narrow_dirty_read", "sqlite_narrow_dirty")
+register_alias("dirty_read_shared_cache", "sqlite_narrow_dirty")

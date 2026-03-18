@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Merge results from separate PG+SQLite, PG-case, and MySQL runs into a single 3-DB report."""
 import sys, csv
 from pathlib import Path

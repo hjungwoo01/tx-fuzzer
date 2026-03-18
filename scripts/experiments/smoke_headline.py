@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Quick smoke test for headline case studies."""
 import sys
 from pathlib import Path

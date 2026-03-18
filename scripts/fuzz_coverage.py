@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Coverage-guided fuzzer for database litmus tests.
 

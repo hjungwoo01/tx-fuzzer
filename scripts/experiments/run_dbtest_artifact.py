@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 DBTest Artifact Generator — Full evaluation for Postgres, MySQL, SQLite.
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 PG UCO CDF experiment: 5 reps × 4 strategies, 3 PG 12.3 containers in parallel.
 

@@ -186,7 +186,7 @@ Results saved in:
 
 ### Doctors write-skew quick validation
 ```bash
-cd /home/jay/tx-fuzzer
+cd tx-fuzzer
 source venv/bin/activate
 python scripts/validate_doctors_fix.py
 ```

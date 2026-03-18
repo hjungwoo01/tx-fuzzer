@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Quick smoke test for MySQL Bug #76927 harness.
 Validates the harness works correctly on both MySQL 5.6 (vulnerable) and 5.7 (fixed).

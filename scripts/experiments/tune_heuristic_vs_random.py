@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tuning Harness: Heuristic vs Random on Headline Case Studies.
 

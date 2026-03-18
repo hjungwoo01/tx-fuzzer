@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 PG-Only TTFSR Tuning Script
 

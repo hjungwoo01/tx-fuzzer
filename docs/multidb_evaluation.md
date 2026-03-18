@@ -1,6 +1,6 @@
 # Multi-DB Evaluation Framework
 
-Comprehensive documentation for the multi-database evaluation framework that
+Documentation for the multi-database evaluation framework that
 measures state-space coverage, time-to-exposure for known bugs, and
 scheduling-overhead across PostgreSQL, MySQL, and SQLite.
 

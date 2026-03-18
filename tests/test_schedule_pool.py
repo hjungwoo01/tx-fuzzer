@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Automated tests for the schedule pool workflow.
 
@@ -633,6 +632,12 @@ def test_final_eval_imports() -> None:
     """Verify all critical imports in run_final_eval work."""
     section("Final Eval Imports")
     try:
+        from scripts.schedule_pool import (
+            run_pool_search,
+            run_random_pool_search,
+            run_heuristic_pool_search,
+            replay_schedule,
+        )
         from scripts.experiments.run_final_eval import (
             run_case_pool_search,
             CasePoolResult,
@@ -646,6 +651,12 @@ def test_final_eval_imports() -> None:
             SQLITE_DIRTY_EVENTS,
         )
         check("final_eval imports OK", True)
+        check("schedule_pool runner exports", all([
+            callable(run_pool_search),
+            callable(run_random_pool_search),
+            callable(run_heuristic_pool_search),
+            callable(replay_schedule),
+        ]))
         check("strategies has 4 entries", len(STRATEGIES) == 4)
         check("seeds has 10 entries", len(SEEDS_10) == 10)
         check("PG events count", len(PG_UCO_EVENTS) == 11)

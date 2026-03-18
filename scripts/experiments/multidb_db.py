@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Multi-DB execution adapters for PostgreSQL, MySQL, and SQLite."""
 
 from __future__ import annotations

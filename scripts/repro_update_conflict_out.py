@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Deterministic reproducer for the PostgreSQL SSI "update-conflict-out" bug.
 

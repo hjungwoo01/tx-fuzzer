@@ -36,6 +36,6 @@ Method notes:
 
 ## Plots
 
-- /home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/lost_update_rc_ecdf.png
-- /home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/serializable_write_skew_ecdf.png
-- /home/jay/tx-fuzzer/bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/write_skew_rr_ecdf.png
+- bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/lost_update_rc_ecdf.png
+- bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/serializable_write_skew_ecdf.png
+- bench/known_bugs/artifacts/benchmark_2026-02-25T15-19-26Z/plots/write_skew_rr_ecdf.png

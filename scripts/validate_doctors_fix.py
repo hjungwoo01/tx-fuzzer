@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Quick targeted validation of doctors_write_skew variants.
 Tests that:
