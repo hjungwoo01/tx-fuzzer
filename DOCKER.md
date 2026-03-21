@@ -1,34 +1,57 @@
-# Docker setup for tx-fuzzer
+# Docker setups
 
-Use MySQL (and optionally Redis) for litmus tests and mixed-attack fuzzing.
+The repository ships three separate Docker entry points because the workflows
+serve different purposes.
 
-## Quick start: MySQL
+## 1. Main evaluation stack: `docker-compose-multidb.yml`
 
-From the project root:
-
-```bash
-docker compose up -d
-```
-
-Then run litmus tests against MySQL (default DSN already points at the compose MySQL):
+Use this for the primary schedule-exploration workflow.
 
 ```bash
-python scripts/run_litmus.py --target mysql --test lost_update
-python scripts/run_litmus.py --target mysql --test atomicity
+docker compose -f docker-compose-multidb.yml up -d
+docker compose -f docker-compose-multidb.yml down -v
 ```
 
-See **scripts/mysql.md** for full MySQL usage (chaos, mixed-attack, options).
+This stack provides:
 
-## MySQL + Redis (compose)
+- PostgreSQL 12.3 and 12.4 for the `update_conflict_out` case study
+- PostgreSQL 16.2 as a modern baseline
+- MySQL 8.0.34 for the current MySQL case study
+- MySQL 5.6 and 5.7 for historical bug-comparison workflows
 
-| Service | Container      | Port (host) | DSN |
-|---------|----------------|-------------|-----|
-| MySQL   | `mysql-litmus` | 3307        | `mysql://test:test@localhost:3307/test` |
-| Redis   | `redis-litmus` | 6380        | `redis://localhost:6380/0` |
+Use it with:
+
+```bash
+python scripts/experiments/run_final_eval.py --quick --db postgres mysql sqlite
+```
+
+## 2. Focused PostgreSQL repro stack: `docker-compose-repro.yml`
+
+Use this when you only want the PostgreSQL 12.3/12.4 reproduction pair.
+
+```bash
+docker compose -f docker-compose-repro.yml up -d
+docker compose -f docker-compose-repro.yml down -v
+```
+
+This is the smallest container setup for the historical
+`update_conflict_out` reproduction workflow.
+
+## 3. Helper stack for litmus utilities: `docker-compose.yml`
+
+Use this for auxiliary MySQL and Redis helper scripts.
 
 ```bash
 docker compose up -d
 docker compose down
 ```
 
-Default DSNs in `run_litmus.py` and `run_mixed_attack.py` match the table above.
+Services:
+
+| Service | Container | Port | Typical use |
+|---------|-----------|------|-------------|
+| MySQL | `mysql-litmus` | `3307` | litmus and mixed-attack scripts |
+| Redis | `redis-litmus` | `6380` | Redis helper workflows |
+
+See [scripts/mysql.md](scripts/mysql.md) and [scripts/redis.md](scripts/redis.md)
+for those auxiliary workflows.
