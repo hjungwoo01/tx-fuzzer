@@ -1,32 +1,33 @@
-## Litmus Tests for PostgreSQL Anomalies
+# Litmus tests
 
-This folder contains small, focused **litmus tests** that exercise specific transaction anomalies against a simple `kv(k INT PRIMARY KEY, v INT NOT NULL)` table.
+This directory contains small, focused anomaly tests. They are useful for quick
+sanity checks, but they are auxiliary to the main schedule-pool workflow.
 
-All tests share a common helper, `LitmusTester` (`scripts/litmus_utils.py`), which:
-- Opens **two PostgreSQL connections**.
-- Resets the `kv` table and seeds keys `1` and `2` with value `0`.
-- Configures a **transaction isolation level** for the session.
-- Prints **PASS (Safe)** / **FAIL (Vulnerable)** results.
+## What lives here
 
-By default, tests connect to:
-- `postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable`
+- direct litmus scripts under `litmus/test_*.py`
+- helper utilities in `scripts/litmus_utils.py`
+- adapter-backed entrypoints such as `scripts/run_litmus.py`
 
-You can override this with `--dsn`.
+## Typical usage
 
-### Isolation Level
-
-Each test accepts an `--isolation` flag and maps it to a PostgreSQL isolation level:
-
-- `READ COMMITTED` (default)
-- `REPEATABLE READ`
-- `SERIALIZABLE`
-
-Example:
+PostgreSQL example:
 
 ```bash
-python3 litmus/test_g1_lost_update.py --isolation "SERIALIZABLE"
+python litmus/test_g1_lost_update.py --isolation "READ COMMITTED"
 ```
 
-This runs the G1 lost-update litmus under **SERIALIZABLE** and should typically report **PASS (Safe)** if the database correctly blocks the anomaly (often via a `SerializationFailure`).
+Adapter-driven example:
 
+```bash
+python scripts/run_litmus.py --target mysql --test lost_update
+```
 
+## When to use litmus tests
+
+- confirm a known anomaly or control quickly
+- debug a single isolation behavior
+- smoke-test a database adapter
+
+If you want the main artifact or research workflow, use
+`scripts/experiments/run_final_eval.py` instead.

@@ -2451,6 +2451,16 @@ def main():
 
     dbs = args.db
     dsns = dict(DEFAULT_DSNS)
+    dsns["postgres"] = os.getenv(
+        "PG_16_2_DSN",
+        "postgres://postgres:postgres@localhost:54326/postgres?sslmode=disable",
+    )
+    dsns["mysql"] = os.getenv(
+        "MYSQL_8_0_34_DSN",
+        "mysql://root:root@localhost:33080/test",
+    )
+    if "sqlite" in dbs and "SQLITE_DSN" not in os.environ:
+        dsns["sqlite"] = str(output_dir / "sqlite_eval.sqlite")
 
     print(f"=== Schedule Pool Final Evaluation ===")
     print(f"  Output: {output_dir}")

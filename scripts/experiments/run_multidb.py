@@ -626,6 +626,8 @@ def main() -> int:
         MYSQL_DSN = args.mysql_dsn
     if args.sqlite_dsn:
         SQLITE_DSN = args.sqlite_dsn
+    elif "SQLITE_DSN" not in os.environ:
+        SQLITE_DSN = str(output_dir / "sqlite_eval.sqlite")
 
     # Determine which DBs to run
     all_dbs = args.db or ["postgres", "mysql", "sqlite"]

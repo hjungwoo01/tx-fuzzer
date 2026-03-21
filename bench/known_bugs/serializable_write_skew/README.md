@@ -1,11 +1,11 @@
-# serializable_write_skew
+# `serializable_write_skew`
 
-Control case for the same write-skew application pattern under
-`SERIALIZABLE` isolation.
+Auxiliary control case for the write-skew pattern under `SERIALIZABLE`.
 
-- Expected signal: at least one transaction aborts with SQLSTATE `40001`
-  (`serialization_failure`).
-- This is expected behavior, not a bug.
+Expected behavior:
 
-The benchmark uses this case to measure how quickly each runner reaches the
-conflict window that triggers SSI protection.
+- the database prevents the anomaly
+- a serialization failure or equivalent protection appears instead of a bug
+
+This case belongs to the `bench/known_bugs/` benchmark suite, not the main
+schedule-pool evaluation path.

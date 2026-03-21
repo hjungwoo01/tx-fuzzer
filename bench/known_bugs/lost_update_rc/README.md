@@ -1,11 +1,12 @@
-# lost_update_rc
+# `lost_update_rc`
 
-Known anomaly scenario (not a PostgreSQL engine defect): naive read-modify-write
-lost update under `READ COMMITTED`.
+Auxiliary benchmark case for naive read-modify-write lost update under
+`READ COMMITTED`.
 
-- Initial state: `counters(1) = 0`.
-- Both clients attempt `value = read_value + 1`.
-- Anomaly signal: both commit and final value is `1` (expected serial result is `2`).
+Signal:
 
-This models application logic that does arithmetic client-side without
-`SELECT ... FOR UPDATE` or atomic SQL updates.
+- both clients commit
+- final counter/value reflects a lost update
+
+This case belongs to the `bench/known_bugs/` benchmark suite, not the main
+schedule-pool evaluation path.

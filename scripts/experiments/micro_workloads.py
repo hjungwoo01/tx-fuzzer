@@ -52,7 +52,8 @@ def job_queue_setup_sql(db: str) -> List[str]:
             "CREATE TABLE IF NOT EXISTS claims (job_id INT, worker VARCHAR(20), ts BIGINT)",
             "DELETE FROM claims",
             "DELETE FROM jobs",
-            "INSERT INTO jobs (id, status, worker) VALUES (1, 'ready', NULL)",
+            "INSERT INTO jobs (id, status, worker) VALUES (1, 'ready', NULL) "
+            "ON DUPLICATE KEY UPDATE status='ready', worker=NULL",
         ]
     if db == "sqlite":
         return [
@@ -62,7 +63,7 @@ def job_queue_setup_sql(db: str) -> List[str]:
             "CREATE TABLE IF NOT EXISTS claims (job_id INTEGER, worker TEXT, ts INTEGER)",
             "DELETE FROM claims",
             "DELETE FROM jobs",
-            "INSERT INTO jobs (id, status, worker) VALUES (1, 'ready', NULL)",
+            "INSERT OR REPLACE INTO jobs (id, status, worker) VALUES (1, 'ready', NULL)",
         ]
     # postgres
     return [
@@ -72,7 +73,8 @@ def job_queue_setup_sql(db: str) -> List[str]:
         "CREATE TABLE IF NOT EXISTS claims (job_id INT, worker TEXT, ts BIGINT)",
         "DELETE FROM claims",
         "DELETE FROM jobs",
-        "INSERT INTO jobs (id, status, worker) VALUES (1, 'ready', NULL)",
+        "INSERT INTO jobs (id, status, worker) VALUES (1, 'ready', NULL) "
+        "ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, worker = EXCLUDED.worker",
     ]
 
 
@@ -190,7 +192,8 @@ def bank_setup_sql(db: str) -> List[str]:
             "CREATE TABLE IF NOT EXISTS withdrawals (id INT AUTO_INCREMENT PRIMARY KEY, account_id INT, amount INT, worker VARCHAR(20), success BOOLEAN)",
             "DELETE FROM withdrawals",
             "DELETE FROM accounts",
-            "INSERT INTO accounts (id, balance) VALUES (1, 100)",
+            "INSERT INTO accounts (id, balance) VALUES (1, 100) "
+            "ON DUPLICATE KEY UPDATE balance=100",
         ]
     if db == "sqlite":
         return [
@@ -200,7 +203,7 @@ def bank_setup_sql(db: str) -> List[str]:
             "CREATE TABLE IF NOT EXISTS withdrawals (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER, amount INTEGER, worker TEXT, success INTEGER)",
             "DELETE FROM withdrawals",
             "DELETE FROM accounts",
-            "INSERT INTO accounts (id, balance) VALUES (1, 100)",
+            "INSERT OR REPLACE INTO accounts (id, balance) VALUES (1, 100)",
         ]
     return [
         "DROP TABLE IF EXISTS withdrawals",
@@ -209,7 +212,8 @@ def bank_setup_sql(db: str) -> List[str]:
         "CREATE TABLE IF NOT EXISTS withdrawals (id SERIAL PRIMARY KEY, account_id INT, amount INT, worker TEXT, success BOOLEAN)",
         "DELETE FROM withdrawals",
         "DELETE FROM accounts",
-        "INSERT INTO accounts (id, balance) VALUES (1, 100)",
+        "INSERT INTO accounts (id, balance) VALUES (1, 100) "
+        "ON CONFLICT (id) DO UPDATE SET balance = EXCLUDED.balance",
     ]
 
 
@@ -327,18 +331,20 @@ def list_append_setup_sql(db: str) -> List[str]:
         return [
             "DROP TABLE IF EXISTS kv",
             "CREATE TABLE IF NOT EXISTS kv (id INT PRIMARY KEY, val TEXT NOT NULL)",
-            "INSERT INTO kv (id, val) VALUES (1, '')",
+            "INSERT INTO kv (id, val) VALUES (1, '') "
+            "ON DUPLICATE KEY UPDATE val=''",
         ]
     if db == "sqlite":
         return [
             "DROP TABLE IF EXISTS kv",
             "CREATE TABLE IF NOT EXISTS kv (id INTEGER PRIMARY KEY, val TEXT NOT NULL)",
-            "INSERT INTO kv (id, val) VALUES (1, '')",
+            "INSERT OR REPLACE INTO kv (id, val) VALUES (1, '')",
         ]
     return [
         "DROP TABLE IF EXISTS kv",
         "CREATE TABLE IF NOT EXISTS kv (id INT PRIMARY KEY, val TEXT NOT NULL)",
-        "INSERT INTO kv (id, val) VALUES (1, '')",
+        "INSERT INTO kv (id, val) VALUES (1, '') "
+        "ON CONFLICT (id) DO UPDATE SET val = EXCLUDED.val",
     ]
 
 

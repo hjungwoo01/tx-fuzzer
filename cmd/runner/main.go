@@ -19,13 +19,6 @@ import (
 )
 
 func main() {
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Fatal("DATABASE_URL environment variable not set")
-	}
-
-	testDBConnection(dsn)
-
 	cfgPath := flag.String("config", "workloads/example.yaml", "YAML config")
 	initSchema := flag.Bool("init", false, "init schema and exit")
 	outPath := flag.String("out", "history.edn", "Elle history output path")
@@ -40,6 +33,14 @@ func main() {
 	if cfg.Out != "" {
 		*outPath = cfg.Out
 	}
+	if envDSN := os.Getenv("DATABASE_URL"); envDSN != "" {
+		cfg.Database.DSN = envDSN
+	}
+	if cfg.Database.DSN == "" {
+		log.Fatal("database.dsn is required (set it in the YAML config or via DATABASE_URL)")
+	}
+
+	testDBConnection(cfg.Database.DSN)
 
 	var drv driver.Driver
 	switch cfg.Database.Kind {

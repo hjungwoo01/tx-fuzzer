@@ -922,10 +922,27 @@ def main() -> None:
     # Resolve DSNs
     dsns = {}
     for db in dbs:
-        dsns[db] = os.environ.get(
-            f"TX_FUZZER_{db.upper()}_DSN",
-            DEFAULT_DSNS.get(db, ""),
-        )
+        if db == "postgres":
+            dsns[db] = os.environ.get(
+                "TX_FUZZER_POSTGRES_DSN",
+                os.environ.get(
+                    "PG_16_2_DSN",
+                    "postgres://postgres:postgres@localhost:54326/postgres?sslmode=disable",
+                ),
+            )
+        elif db == "mysql":
+            dsns[db] = os.environ.get(
+                "TX_FUZZER_MYSQL_DSN",
+                os.environ.get(
+                    "MYSQL_8_0_34_DSN",
+                    "mysql://root:root@localhost:33080/test",
+                ),
+            )
+        else:
+            dsns[db] = os.environ.get(
+                f"TX_FUZZER_{db.upper()}_DSN",
+                DEFAULT_DSNS.get(db, ""),
+            )
 
     # SQLite adapter kwargs
     adapter_kwargs: Dict[str, Any] = {}
@@ -936,6 +953,9 @@ def main() -> None:
     else:
         out_dir = ROOT / "results" / f"schedule_pool_{_ts()}"
     _ensure(out_dir)
+
+    if "sqlite" in dbs and "TX_FUZZER_SQLITE_DSN" not in os.environ:
+        dsns["sqlite"] = str(out_dir / "sqlite_eval.sqlite")
 
     print(f"=== Schedule Pool Evaluation ===")
     print(f"  Output: {out_dir}")

@@ -15,11 +15,16 @@ echo "=== Multi-DB Quick Suite ==="
 echo "Starting at $(date -u)"
 echo ""
 
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$ROOT/.mplconfig}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT/.cache}"
+
 # Default DSNs matching docker-compose-multidb.yml
 export PG_12_3_DSN="${PG_12_3_DSN:-postgres://postgres:postgres@localhost:54323/postgres?sslmode=disable}"
 export PG_12_4_DSN="${PG_12_4_DSN:-postgres://postgres:postgres@localhost:54324/postgres?sslmode=disable}"
 export MYSQL_DSN="${MYSQL_DSN:-mysql://root:root@localhost:33080/test}"
-export SQLITE_DSN="${SQLITE_DSN:-/tmp/tx_fuzzer_multidb.sqlite}"
+if [ -z "${SQLITE_DSN:-}" ]; then
+  export SQLITE_DSN="$(mktemp /tmp/tx_fuzzer_multidb_quick.XXXXXX)"
+fi
 
 # Print SQLite version
 python3 -c "import sqlite3; print(f'SQLite version: {sqlite3.sqlite_version}')" || true

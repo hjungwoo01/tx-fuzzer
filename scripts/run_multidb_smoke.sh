@@ -11,7 +11,12 @@ cd "$ROOT"
 
 echo "=== Multi-DB Smoke Test ==="
 
-export SQLITE_DSN="${SQLITE_DSN:-/tmp/tx_fuzzer_smoke.sqlite}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$ROOT/.mplconfig}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT/.cache}"
+
+if [ -z "${SQLITE_DSN:-}" ]; then
+  export SQLITE_DSN="$(mktemp /tmp/tx_fuzzer_smoke.XXXXXX)"
+fi
 
 # Run smoke test (skip PG/MySQL if not available; always test SQLite)
 python3 -m scripts.experiments.run_multidb \

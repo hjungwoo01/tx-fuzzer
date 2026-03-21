@@ -11,11 +11,8 @@
 /*.dylib
 *.test
 *.out
-*.md
-*.txt
 
 # Go workspace files
-go.sum
 *.log
 
 # --- Clojure & Leiningen ---
@@ -45,10 +42,10 @@ Thumbs.db
 
 # --- Test / Output logs ---
 /logs/
+/internal/runner/logs/
 /tmp/
 /history.json
 /results/
-*.json
 
 # --- Docker / Compose ---
 /docker-compose.override.yml
@@ -57,6 +54,10 @@ Thumbs.db
 
 # --- Python ---
 .venv/
+.gocache/
+.gomodcache/
+.cache/
+.mplconfig/
 venv/
 __pycache__/
 *.pyc
@@ -67,3 +68,10 @@ build/
 dist/
 # large local histories
 experiments/*history*.edn
+
+# --- Local benchmark / campaign artifacts ---
+/corpus/
+/bench/known_bugs/artifacts/
+/reports/
+/reports/generated/
+/docs/notes/*.txt
