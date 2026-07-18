@@ -49,8 +49,8 @@ from scripts.experiments.micro_workloads import MICRO_WORKLOADS
 
 from scripts.schedule_pool import (
     Schedule,
-    ScheduleRecord,
-    ScheduleEntry,
+    ScheduleArtifact,
+    DelayPoint,
     SchedulePool,
     ScheduleMutator,
     MutationConfig,
@@ -66,6 +66,10 @@ from scripts.schedule_pool.runner import (
     run_pool_search,
     replay_schedule,
 )
+
+# Backward-compat aliases used throughout this file
+ScheduleRecord = ScheduleArtifact
+ScheduleEntry = DelayPoint
 
 # Case study imports
 from scripts.experiments.case_studies import (

@@ -1,37 +1,79 @@
-# tx-fuzzer
+# IsoTest
 
-tx-fuzzer is a schedule-aware concurrency testing toolkit. Its main workflow
-explores controlled schedules by injecting delays at stable event IDs, keeping
-the SQL and seed data fixed while searching for interesting interleavings.
+## Quick Start (Reviewers Start Here)
 
-Today the repository has two active layers:
+**Docker is the only requirement.**  The image bundles Python, Java, Clojure,
+Elle, SQLite, and all dependencies — no local toolchain setup needed.
 
-- `scripts/schedule_pool/` and `scripts/experiments/run_final_eval.py`
-  implement the main schedule-exploration workflow across PostgreSQL, MySQL,
-  and SQLite.
-- `cmd/runner/` and `internal/runner/` implement a Go/PostgreSQL runner that
-  executes YAML workloads, writes Elle-compatible histories, and supports
-  replay-style schedules.
+```bash
+# 1. Build the container (~3 min first time; cached afterwards)
+make build
 
-The schedule-exploration path is the primary tool. The Go runner, litmus
-utilities, BEC helpers, and repro packs are still useful, but they are
-secondary workflows.
+# 2. Run the end-to-end demo: explore → artifact → replay → Elle verify (~30s)
+make demo
 
-## Core idea
+# 3. Run the scaled-down evaluation (~2 min)
+make eval-fast
+```
 
-The repository is intentionally schedule-only:
+All output artifacts (CSVs, JSON artifacts, Elle reports) are written to the
+`results/` directory on your host machine via a Docker volume mount.
 
-- It does not mutate SQL text.
-- It does not invent new schemas on the fly.
-- It searches timing and ordering space by adding delays to stable event IDs.
-- It hashes canonical end states to measure coverage.
-- It stores schedules that discover new states or bugs so they can be replayed.
+| Command | What it does | Time |
+|---------|-------------|------|
+| `make build` | Build the `isotest-artifact` Docker image | ~3 min |
+| `make demo` | Explore a workload, save artifact, replay, Elle verify | ~30s |
+| `make eval-fast` | Sensitivity + coverage benchmarks (scaled-down) | ~2 min |
+| `make eval-full` | Full paper-quality evaluation | ~60 min |
+| `make shell` | Interactive bash inside the container | — |
 
-That makes the resulting artifacts easier to reason about than fully generative
-transaction fuzzers: every retained schedule is a small, serializable object
-that can be replayed against a fresh database state.
+For the full paper evaluation (Table 2, Figures 3–5):
 
-## Quick start
+```bash
+make eval-full    # ~60 min; results in results/sensitivity/ and results/longitudinal/
+```
+
+To explore interactively:
+
+```bash
+make shell
+# Inside the container:
+python scripts/evaluate_sensitivity.py --help
+python scripts/evaluate_coverage_longitudinal.py --help
+python scripts/verify_elle.py --help
+```
+
+---
+
+**IsoTest** is a client-side schedule exploration and replay tool for database
+isolation testing.  It discovers concurrency bugs by systematically exploring
+transaction interleavings through controlled delay injection, then packages
+each interesting interleaving as a portable **ScheduleArtifact** that can be
+replayed deterministically against a fresh database.
+
+The tool's design is intentionally schedule-only: it never mutates SQL text or
+invents schemas.  Instead, it searches the timing and ordering space by
+injecting client-side delays at stable **Event** identifiers, hashes the
+canonical end-state after each execution, and retains artifacts that expose new
+states or isolation violations.
+
+## Key capabilities
+
+- **High replay-success rates** — retained artifacts include measured replay
+  rates; the tool verifies that replaying a `ScheduleArtifact` reproduces the
+  exact same `FinalStateHash` as the original exploration run.
+- **Delay-sensitivity analysis** — each artifact records which `DelayPoint`s
+  were necessary to trigger the anomaly, enabling minimal reproduction cases.
+- **Pluggable Oracle interface** — users define their own isolation checkers
+  by implementing the `Oracle` ABC.  Built-in oracles cover double-claim,
+  overdraft, and lost-append patterns.
+- **Elle/Jepsen integration** — every exploration and replay run can
+  automatically produce an Elle-compatible EDN history file via the built-in
+  `ElleLogger`.
+- **Multi-DB support** — works against PostgreSQL, MySQL, and SQLite through
+  a normalized `DBAdapter` layer.
+
+## Local Development Setup
 
 ### 1. Install dependencies
 
@@ -41,114 +83,115 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-The Python tooling is the easiest entry point. The Go runner additionally needs
-a recent Go toolchain and Clojure only if you want to run Elle locally.
-
-### 2. Run the schedule-pool smoke test
-
-This exercises the main workflow on SQLite and does not require Docker.
+### 2. Run the smoke test (SQLite, no Docker)
 
 ```bash
 make schedule-pool-smoke
 ```
 
-Equivalent command:
+### 3. Explore, save, and replay in one command
 
 ```bash
-python scripts/experiments/run_final_eval.py --smoke --db sqlite
+make demo-explore-replay
 ```
 
-### 3. Run the multi-DB quick evaluation
+This runs a single exploration session on SQLite, saves any bug-triggering
+`ScheduleArtifact` to `examples/repros/`, and immediately replays it to verify
+the `FinalStateHash` matches.
 
-Bring up the evaluation databases:
+### 4. Replay a pre-saved artifact
+
+```bash
+python scripts/run_demo.py replay examples/repros/bank_overdraft_sqlite.json
+```
+
+### 5. Multi-DB evaluation
 
 ```bash
 docker compose -f docker-compose-multidb.yml up -d
-```
-
-Then run the main quick evaluation:
-
-```bash
 python scripts/experiments/run_final_eval.py \
-  --quick \
-  --db postgres mysql sqlite \
+  --quick --db postgres mysql sqlite \
   --output-dir results/schedule_pool_quick
 ```
 
-This produces coverage, case-study, determinism, throughput, and pool-analysis
-artifacts under the chosen output directory.
+## Core abstractions
 
-## Using the Go runner
+| Type | Purpose |
+|------|---------|
+| `Event` | A trackable database operation (`s{session}_t{txn}_q{query}_{phase}`) |
+| `DelayPoint` | A client-side pause injected at an Event |
+| `Schedule` | Ordered list of DelayPoints (canonical form) |
+| `ScheduleArtifact` | Serializable record: schedule + outcome + metadata |
+| `FinalStateHash` | Deterministic SHA-256 hash of canonical end-state |
+| `Oracle` | Pluggable interface for isolation violation checking |
+| `OracleVerdict` | Structured result from an Oracle check |
+| `ReplayVerification` | Aggregate replay determinism summary |
 
-The Go runner is the lower-level execution path for PostgreSQL YAML workloads.
-Use it when you want Elle histories, replay schedules, or direct control over
-transaction templates.
+## Architecture
 
-```bash
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-go run ./cmd/runner -config workloads/write_skew.yaml -out history.edn -elle
-```
+IsoTest has two active layers:
 
-Useful capabilities supported by the YAML/Go path:
+**Primary: schedule exploration (Python)** — `scripts/schedule_pool/` implements
+the core types, mutation operators, retention policy, and pool-based search.
+`scripts/experiments/run_final_eval.py` orchestrates multi-DB evaluation.  The
+pool-based exploration strategy (mutate → execute → retain novel → replay) is
+one of several possible exploration strategies; the tool is modular so that
+users can plug in their own.
 
-- weighted transaction mixes
-- per-transaction isolation levels and timeouts
-- query-level Elle annotations
-- replay schedules via `replay.enabled`
-- hybrid replay plus background load
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/multidb_evaluation.md](docs/multidb_evaluation.md) for the current
-workflow map.
+**Secondary: Go/PostgreSQL runner** — `cmd/runner/` and `internal/` implement a
+lower-level execution engine for YAML workloads with Elle-compatible EDN
+history output, replay schedules, and hybrid replay + background load.
 
 ## Repository map
 
-- `scripts/schedule_pool/`: schedule model, event IDs, mutation, retention,
-  pool sampling, replay
-- `scripts/experiments/`: multi-DB workloads, runners, case studies, final
-  evaluation harnesses
-- `cmd/runner/`, `internal/`: Go execution engine for YAML workloads and Elle
-  histories
-- `workloads/`: YAML workloads for the Go runner and Python workload modules
-- `docs/`: current docs plus archival evaluation notes
-- `bench/known_bugs/`: benchmark suite for fixed known-anomaly cases
+- `scripts/schedule_pool/` — core types, schedule model, event IDs, mutation,
+  retention, pool, replay verification, Elle logger, Oracle interface
+- `scripts/experiments/` — multi-DB adapters, workloads, case studies,
+  evaluation harness
+- `scripts/evaluate_sensitivity.py` — delay-sensitivity benchmarking
+- `scripts/evaluate_coverage_longitudinal.py` — longitudinal state-coverage
+  analyzer
+- `scripts/verify_elle.py`, `scripts/verify_elle.sh` — Elle/AWDIT verification
+  pipeline wrappers
+- `cmd/runner/`, `internal/` — Go execution engine for YAML workloads
+- `workloads/` — YAML workload configurations
+- `examples/repros/` — pre-saved ScheduleArtifacts for known anomalies
+- `docs/` — architecture and evaluation documentation
+- `Dockerfile` — self-contained reviewer environment (Python + JDK + Clojure + Elle)
 
 ## Validation
 
-Run the repository’s broad local verification sweep with:
-
 ```bash
-make verify
+make verify        # Full: go vet + shell check + Python compile + all tests
+make test          # Go + Python tests
+make test-py       # Python tests only
 ```
 
-Run the smaller core test suite with:
+## Extending IsoTest
 
-```bash
-make test
+**Add a new Oracle:**
+```python
+from scripts.schedule_pool.oracle import Oracle
+from scripts.schedule_pool.types import OracleVerdict
+
+class MyOracle(Oracle):
+    @property
+    def name(self) -> str:
+        return "my_check"
+
+    def check(self, outcomes, final_state) -> OracleVerdict:
+        # your isolation check logic
+        return OracleVerdict(bug_found=False, reason="OK")
 ```
 
-Or run them separately:
+**Add a new exploration strategy** by implementing the `BaseStrategy` ABC and
+passing it to `run_pool_search(base_strategy=...)`.
 
-```bash
-go test ./...
-python -m pytest tests/test_schedule_pool.py tests/test_multidb_canonical_hash.py
-```
+## Documentation
 
-## Documentation guide
-
-Current reference docs:
-
-- [docs/README.md](docs/README.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/multidb_evaluation.md](docs/multidb_evaluation.md)
-- [WORKSHOP.md](WORKSHOP.md)
-
-Generated companion notes from `run_final_eval.py`:
-
-- `docs/notes/schedule_pool_final_methodology.md`
-- `docs/notes/schedule_pool_final_results.md`
-
-Historical plans, one-off experiment notes, and archived result writeups remain
-in `docs/eval/`, `docs/notes/`, `reports/`, `results/`, and `runs/`. They are
-kept for provenance, but they are not the authoritative description of the
-current tool.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component map and extension
+  points
+- [docs/multidb_evaluation.md](docs/multidb_evaluation.md) — evaluation
+  workflow reference
+- [docs/heuristic_scheduler.md](docs/heuristic_scheduler.md) — formal
+  description of the Heuristic scheduler algorithm

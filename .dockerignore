@@ -1,0 +1,12 @@
+.git
+.venv
+.gocache
+.gomodcache
+.cache
+.mplconfig
+.claude
+__pycache__
+*.pyc
+results/
+*.sqlite
+*.sqlite3

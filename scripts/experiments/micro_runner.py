@@ -177,11 +177,8 @@ class MicroRunner:
             except Exception:
                 pass
 
-        # Check oracle
-        if self.workload.needs_state_for_oracle:
-            bug_found, bug_reason = self.workload.oracle(outcomes, state)
-        else:
-            bug_found, bug_reason = self.workload.oracle(outcomes)
+        # Check oracle (unified interface)
+        bug_found, bug_reason = self.workload.oracle(outcomes, state)
 
         elapsed = (time.monotonic() - t0) * 1000
         h = self.workload.canonical_hash(state)

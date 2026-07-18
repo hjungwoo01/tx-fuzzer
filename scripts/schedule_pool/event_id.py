@@ -1,5 +1,5 @@
 """
-Stable event ID generation for schedule-pool workflow.
+Stable event ID generation for the schedule exploration workflow.
 
 Event IDs are deterministic within a workload trace given the same seed.
 Format: s{session}_t{txn_idx}_q{query_idx}_{phase}
@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
+from .types import Event, Phase
+
 
 def make_event_id(
     session: int,
@@ -40,9 +42,19 @@ def make_event_id(
     Examples:
       make_event_id(0, 0, 0, "begin")   → "s0_t0_q0_begin"
       make_event_id(2, 0, 1, "exec")    → "s2_t0_q1_exec"
-      make_event_id(1, 0, 3, "commit")  → "s1_t0_q3_commit"
+      make_event_id(1, 0, 3, "commit")  �� "s1_t0_q3_commit"
     """
     return f"s{session}_t{txn_idx}_q{query_idx}_{phase}"
+
+
+def make_event(
+    session: int,
+    txn_idx: int = 0,
+    query_idx: int = 0,
+    phase: Phase = Phase.EXEC,
+) -> Event:
+    """Create a structured Event object."""
+    return Event(session=session, txn_idx=txn_idx, query_idx=query_idx, phase=phase)
 
 
 def parse_event_id(eid: str) -> Dict[str, object]:
@@ -54,6 +66,11 @@ def parse_event_id(eid: str) -> Dict[str, object]:
         "query_idx": int(parts[2][1:]),   # "q1" → 1
         "phase": parts[3],                # "exec"
     }
+
+
+def event_from_id(eid: str) -> Event:
+    """Parse a stable event ID string into a structured Event."""
+    return Event.from_id(eid)
 
 
 def make_trial_event_ids(
@@ -96,6 +113,10 @@ MICRO_WORKLOAD_EVENTS: Dict[str, Dict[str, int]] = {
     "bank_overdraft": {"queries_per_worker": 3},
     # list_append: begin → UPDATE list → SELECT list → commit
     "list_append": {"queries_per_worker": 2},
+    # smallbank: begin → SELECT balance → UPDATE table_a → UPDATE table_b → commit
+    "smallbank": {"queries_per_worker": 3},
+    # multikey_transfer: begin → 5x SELECT balance → 5x UPDATE balance → commit
+    "multikey_transfer": {"queries_per_worker": 10},
 }
 
 

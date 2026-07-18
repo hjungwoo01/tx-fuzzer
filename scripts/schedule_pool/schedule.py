@@ -1,7 +1,7 @@
 """
 First-class schedule representation.
 
-A schedule is an ordered list of ScheduleEntry tuples:
+A schedule is an ordered list of DelayPoint tuples:
   [{event: <stable_event_id>, delay_ms: <float>}, ...]
 
 External (persisted) format is always the ordered list of tuples.
@@ -13,27 +13,11 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-
-@dataclass(frozen=True)
-class ScheduleEntry:
-    """A single delay point in a schedule."""
-    event: str       # stable event id, e.g. "s0_t0_q1_exec"
-    delay_ms: float  # non-negative delay in ms
-
-    def __post_init__(self) -> None:
-        if self.delay_ms < 0:
-            object.__setattr__(self, "delay_ms", 0.0)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"event": self.event, "delay_ms": round(self.delay_ms, 4)}
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "ScheduleEntry":
-        return cls(event=str(d["event"]), delay_ms=float(d["delay_ms"]))
+from .types import DelayPoint, FinalStateHash
 
 
 class Schedule:
@@ -46,17 +30,22 @@ class Schedule:
     - all delays are non-negative
     """
 
-    def __init__(self, entries: Optional[List[ScheduleEntry]] = None) -> None:
-        self._entries: List[ScheduleEntry] = []
+    def __init__(self, entries: Optional[List[DelayPoint]] = None) -> None:
+        self._entries: List[DelayPoint] = []
         if entries:
             # Deduplicate by event, keeping last value
-            seen: Dict[str, ScheduleEntry] = {}
+            seen: Dict[str, DelayPoint] = {}
             for e in entries:
                 seen[e.event] = e
             self._entries = sorted(seen.values(), key=lambda x: x.event)
 
     @property
-    def entries(self) -> List[ScheduleEntry]:
+    def entries(self) -> List[DelayPoint]:
+        return list(self._entries)
+
+    @property
+    def delay_points(self) -> List[DelayPoint]:
+        """Alias for entries — preferred name in tool-track framing."""
         return list(self._entries)
 
     @property
@@ -87,19 +76,19 @@ class Schedule:
         return [e.to_dict() for e in self._entries]
 
     @classmethod
-    def from_list(cls, entries: List[Dict[str, Any]]) -> "Schedule":
+    def from_list(cls, entries: List[Dict[str, Any]]) -> Schedule:
         """Deserialize from list of dicts."""
-        return cls([ScheduleEntry.from_dict(d) for d in entries])
+        return cls([DelayPoint.from_dict(d) for d in entries])
 
     @classmethod
-    def empty(cls) -> "Schedule":
+    def empty(cls) -> Schedule:
         return cls()
 
     def to_json(self) -> str:
         return json.dumps(self.to_list(), separators=(",", ":"))
 
     @classmethod
-    def from_json(cls, s: str) -> "Schedule":
+    def from_json(cls, s: str) -> Schedule:
         return cls.from_list(json.loads(s))
 
     def content_hash(self) -> str:
@@ -107,7 +96,7 @@ class Schedule:
         payload = json.dumps(self.to_list(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
-    def normalized(self) -> "Schedule":
+    def normalized(self) -> Schedule:
         """Return a new schedule with entries sorted by event id (canonical form)."""
         return Schedule(self._entries)
 
@@ -138,9 +127,18 @@ class Schedule:
 
 
 @dataclass
-class ScheduleRecord:
+class ScheduleArtifact:
     """
-    Full metadata record for a schedule in the pool.
+    A complete, serializable record of one explored interleaving.
+
+    Captures everything needed to reproduce and verify an interleaving:
+    the delay points that produced it, the resulting FinalStateHash,
+    and metadata about the workload context.
+
+    This is the tool's primary output artifact.  It can be:
+    - Saved to disk as JSON
+    - Replayed against a fresh database to verify determinism
+    - Shared as a minimal reproduction case
     """
     schedule_id: str = ""
     parent_schedule_id: Optional[str] = None
@@ -160,6 +158,26 @@ class ScheduleRecord:
     delay_count: int = 0
     retention_reason: str = ""
     created_at: str = ""
+
+    # --- Aliases for tool-track framing ---
+
+    @property
+    def artifact_id(self) -> str:
+        return self.schedule_id
+
+    @property
+    def delay_points(self) -> List[DelayPoint]:
+        return self.schedule.delay_points
+
+    @property
+    def final_state_hash(self) -> Optional[FinalStateHash]:
+        if self.discovered_state_hash:
+            return FinalStateHash(value=self.discovered_state_hash)
+        return None
+
+    @property
+    def replay_rate(self) -> Optional[float]:
+        return self.replay_rate_buggy
 
     def __post_init__(self) -> None:
         if not self.schedule_id:
@@ -192,7 +210,7 @@ class ScheduleRecord:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "ScheduleRecord":
+    def from_dict(cls, d: Dict[str, Any]) -> ScheduleArtifact:
         sched = Schedule.from_list(d.get("schedule", []))
         return cls(
             schedule_id=d.get("schedule_id", ""),
@@ -217,5 +235,31 @@ class ScheduleRecord:
         return json.dumps(self.to_dict(), separators=(",", ":"))
 
     @classmethod
-    def from_jsonl(cls, line: str) -> "ScheduleRecord":
+    def from_jsonl(cls, line: str) -> ScheduleArtifact:
         return cls.from_dict(json.loads(line))
+
+    def to_json(self, indent: int = 2) -> str:
+        """Pretty JSON for standalone artifact files."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+    def save(self, path: Any) -> Any:
+        """Write artifact to a JSON file."""
+        from pathlib import Path as _Path
+        p = _Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(self.to_json(), encoding="utf-8")
+        return p
+
+    @classmethod
+    def load(cls, path: Any) -> ScheduleArtifact:
+        """Load artifact from a JSON file."""
+        from pathlib import Path as _Path
+        text = _Path(path).read_text(encoding="utf-8")
+        return cls.from_dict(json.loads(text))
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility aliases
+# ---------------------------------------------------------------------------
+ScheduleEntry = DelayPoint
+ScheduleRecord = ScheduleArtifact

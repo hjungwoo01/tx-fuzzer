@@ -1,0 +1,27 @@
+{
+  "schedule_id": "repro_jq_001",
+  "parent_schedule_id": null,
+  "db": "postgres",
+  "workload": "job_queue_claim",
+  "variant": "buggy",
+  "strategy": "schedule_pool",
+  "seed": 42,
+  "schedule": [
+    {"event": "s0_t0_q0_begin", "delay_ms": 0.0},
+    {"event": "s0_t0_q1_exec", "delay_ms": 8.0},
+    {"event": "s1_t0_q0_begin", "delay_ms": 0.0},
+    {"event": "s1_t0_q1_exec", "delay_ms": 0.0},
+    {"event": "s2_t0_q0_begin", "delay_ms": 35.0},
+    {"event": "s3_t0_q0_begin", "delay_ms": 35.0}
+  ],
+  "discovered_state_hash": null,
+  "bug_found": true,
+  "bug_reason": "Double claim! Workers: ['w0', 'w1']",
+  "control_clean": null,
+  "replay_rate_buggy": null,
+  "replay_rate_control": null,
+  "total_delay_ms": 78.0,
+  "delay_count": 6,
+  "retention_reason": "new_bug",
+  "created_at": "2026-05-04T00:00:00+00:00"
+}

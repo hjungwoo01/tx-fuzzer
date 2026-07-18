@@ -26,21 +26,24 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-from scripts.schedule_pool.schedule import Schedule, ScheduleEntry, ScheduleRecord
+from scripts.schedule_pool.types import DelayPoint, FinalStateHash, OracleVerdict
+from scripts.schedule_pool.schedule import Schedule, ScheduleArtifact
 from scripts.schedule_pool.event_id import (
     make_event_id,
+    make_event,
     make_trial_event_ids,
     parse_event_id,
+    event_from_id,
     get_workload_event_ids,
 )
-from scripts.schedule_pool.pool import PoolConfig, SchedulePool
+from scripts.schedule_pool.pool import PoolConfig, SchedulePool, SearchPhase
 from scripts.schedule_pool.mutator import MutationConfig, ScheduleMutator
 from scripts.schedule_pool.retention import RetentionPolicy, RetentionReason
+from scripts.schedule_pool.oracle import Oracle, DoubleClaimOracle, OverdraftOracle, LostAppendOracle
 
-try:
-    from scripts.schedule_pool.pool import SearchPhase
-except ImportError:
-    SearchPhase = None  # type: ignore[misc,assignment]
+# Backward-compat aliases used in existing test code
+ScheduleEntry = DelayPoint
+ScheduleRecord = ScheduleArtifact
 
 
 passed = 0
@@ -637,6 +640,7 @@ def test_final_eval_imports() -> None:
             run_random_pool_search,
             run_heuristic_pool_search,
             replay_schedule,
+            verify_replay,
         )
         from scripts.experiments.run_final_eval import (
             run_case_pool_search,
@@ -656,6 +660,7 @@ def test_final_eval_imports() -> None:
             callable(run_random_pool_search),
             callable(run_heuristic_pool_search),
             callable(replay_schedule),
+            callable(verify_replay),
         ]))
         check("strategies has 4 entries", len(STRATEGIES) == 4)
         check("seeds has 10 entries", len(SEEDS_10) == 10)
@@ -664,6 +669,175 @@ def test_final_eval_imports() -> None:
         check("SQLite events count", len(SQLITE_DIRTY_EVENTS) == 9)
     except ImportError as e:
         check("final_eval imports OK", False, str(e))
+
+
+# ---- New type-system tests ----
+
+
+def test_event_type() -> None:
+    """Test Event and Phase types."""
+    section("Event / Phase Types")
+    from scripts.schedule_pool.types import Event, Phase
+
+    # Construction and id property
+    ev = Event(session=0, txn_idx=0, query_idx=1, phase=Phase.EXEC)
+    check("event id format", ev.id == "s0_t0_q1_exec")
+    check("event str", str(ev) == "s0_t0_q1_exec")
+
+    # Round-trip from_id
+    ev2 = Event.from_id("s2_t1_q3_commit")
+    check("from_id session", ev2.session == 2)
+    check("from_id txn_idx", ev2.txn_idx == 1)
+    check("from_id query_idx", ev2.query_idx == 3)
+    check("from_id phase", ev2.phase == Phase.COMMIT)
+    check("from_id round-trip", ev2.id == "s2_t1_q3_commit")
+
+    # make_event helper
+    ev3 = make_event(1, 0, 2, Phase.BEGIN)
+    check("make_event", ev3.id == "s1_t0_q2_begin")
+
+    # event_from_id helper
+    ev4 = event_from_id("s3_t0_q0_rollback")
+    check("event_from_id", ev4.session == 3 and ev4.phase == Phase.ROLLBACK)
+
+    # Phase enum values
+    check("phase values", set(p.value for p in Phase) == {"begin", "exec", "commit", "rollback", "barrier"})
+
+
+def test_delay_point() -> None:
+    """Test DelayPoint type (replaces ScheduleEntry)."""
+    section("DelayPoint Type")
+
+    dp = DelayPoint("s0_t0_q0_begin", 10.0)
+    check("delay_point event", dp.event == "s0_t0_q0_begin")
+    check("delay_point delay_ms", dp.delay_ms == 10.0)
+
+    # Negative clamped
+    dp2 = DelayPoint("s0_t0_q0_begin", -5.0)
+    check("negative delay clamped", dp2.delay_ms == 0.0)
+
+    # Dict round-trip
+    d = dp.to_dict()
+    dp3 = DelayPoint.from_dict(d)
+    check("delay_point dict round-trip", dp3 == dp)
+
+    # Backward compat: ScheduleEntry is DelayPoint
+    se = ScheduleEntry("test", 42.0)
+    check("ScheduleEntry is DelayPoint", isinstance(se, DelayPoint))
+
+
+def test_final_state_hash() -> None:
+    """Test FinalStateHash type."""
+    section("FinalStateHash Type")
+
+    state = {"balance": 20, "successful_withdrawals": 1}
+    h = FinalStateHash.compute(state)
+    check("hash is 16 chars", len(h.value) == 16)
+    check("hash str", str(h) == h.value)
+
+    # Deterministic
+    h2 = FinalStateHash.compute(state)
+    check("hash deterministic", h == h2)
+
+    # Key-order independent
+    h3 = FinalStateHash.compute({"successful_withdrawals": 1, "balance": 20})
+    check("hash key-order independent", h == h3)
+
+    # Different state different hash
+    h4 = FinalStateHash.compute({"balance": 100})
+    check("different state different hash", h != h4)
+
+    # String comparison
+    check("hash eq string", h == h.value)
+
+
+def test_oracle_interface() -> None:
+    """Test Oracle implementations."""
+    section("Oracle Interface")
+
+    # DoubleClaimOracle
+    dc = DoubleClaimOracle()
+    check("oracle name", dc.name == "double_claim")
+
+    v1 = dc.check(
+        [{"outcome": "claimed", "worker": "w0"}, {"outcome": "claimed", "worker": "w1"}],
+        {},
+    )
+    check("double claim detected", v1.bug_found is True)
+    check("oracle verdict is OracleVerdict", isinstance(v1, OracleVerdict))
+
+    v2 = dc.check(
+        [{"outcome": "claimed", "worker": "w0"}, {"outcome": "already_claimed", "worker": "w1"}],
+        {},
+    )
+    check("single claim OK", v2.bug_found is False)
+
+    # OverdraftOracle
+    od = OverdraftOracle()
+    v3 = od.check([], {"balance": -60, "successful_withdrawals": 2})
+    check("overdraft detected", v3.bug_found is True)
+
+    v4 = od.check([], {"balance": 20, "successful_withdrawals": 1})
+    check("no overdraft", v4.bug_found is False)
+
+    # LostAppendOracle
+    la = LostAppendOracle()
+    v5 = la.check(
+        [{"outcome": "appended", "worker": "t0"}, {"outcome": "appended", "worker": "t1"}],
+        {"tokens": ["t0"]},
+    )
+    check("lost append detected", v5.bug_found is True)
+
+    v6 = la.check(
+        [{"outcome": "appended", "worker": "t0"}, {"outcome": "appended", "worker": "t1"}],
+        {"tokens": ["t0", "t1"]},
+    )
+    check("all tokens present", v6.bug_found is False)
+
+
+def test_schedule_artifact() -> None:
+    """Test ScheduleArtifact (replaces ScheduleRecord)."""
+    section("ScheduleArtifact Type")
+
+    sched = Schedule([DelayPoint("s0_t0_q0_begin", 10.0)])
+    art = ScheduleArtifact(
+        db="postgres",
+        workload="bank_overdraft",
+        schedule=sched,
+        discovered_state_hash="abc123def456",
+        bug_found=True,
+        bug_reason="overdraft detected",
+    )
+
+    # Alias properties
+    check("artifact_id == schedule_id", art.artifact_id == art.schedule_id)
+    check("delay_points returns entries", len(art.delay_points) == 1)
+    check("final_state_hash type", art.final_state_hash is not None)
+    check("final_state_hash value", art.final_state_hash.value == "abc123def456")
+
+    # JSON round-trip
+    j = art.to_json()
+    art2 = ScheduleArtifact.from_dict(json.loads(j))
+    check("artifact json round-trip db", art2.db == "postgres")
+    check("artifact json round-trip bug", art2.bug_found is True)
+    check("artifact json round-trip schedule", art2.schedule == sched)
+
+    # JSONL round-trip (backward compat)
+    line = art.to_jsonl()
+    art3 = ScheduleArtifact.from_jsonl(line)
+    check("artifact jsonl round-trip", art3.workload == "bank_overdraft")
+
+    # Save/load round-trip
+    with tempfile.TemporaryDirectory() as tmpdir:
+        p = Path(tmpdir) / "test_artifact.json"
+        art.save(p)
+        art4 = ScheduleArtifact.load(p)
+        check("artifact save/load round-trip", art4.bug_found is True)
+        check("artifact save/load schedule", art4.schedule == sched)
+
+    # Backward compat: ScheduleRecord is ScheduleArtifact
+    rec = ScheduleRecord(db="test", workload="test", schedule=Schedule.empty())
+    check("ScheduleRecord is ScheduleArtifact", isinstance(rec, ScheduleArtifact))
 
 
 def main() -> int:
@@ -687,6 +861,12 @@ def main() -> int:
     test_ttfsr_retention()
     test_compact_bonus()
     test_final_eval_imports()
+    # New type-system tests
+    test_event_type()
+    test_delay_point()
+    test_final_state_hash()
+    test_oracle_interface()
+    test_schedule_artifact()
 
     print(f"\n{'='*60}")
     print(f"  Results: {passed} passed, {failed} failed")

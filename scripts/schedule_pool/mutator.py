@@ -21,7 +21,8 @@ import random as _random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-from .schedule import Schedule, ScheduleEntry
+from .types import DelayPoint
+from .schedule import Schedule
 from .event_id import make_event_id
 
 
@@ -119,7 +120,7 @@ class ScheduleMutator:
 
         # Build new schedule
         result_entries = [
-            ScheduleEntry(event=ev, delay_ms=d)
+            DelayPoint(event=ev, delay_ms=d)
             for ev, d in entries.items()
             if d > 0
         ]

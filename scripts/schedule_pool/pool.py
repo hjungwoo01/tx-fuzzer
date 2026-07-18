@@ -28,7 +28,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from .schedule import Schedule, ScheduleRecord
+from .schedule import Schedule, ScheduleArtifact
 
 
 class SearchPhase(Enum):
@@ -71,7 +71,7 @@ class SchedulePool:
         path: Optional[Path] = None,
         config: Optional[PoolConfig] = None,
     ) -> None:
-        self._records: List[ScheduleRecord] = []
+        self._records: List[ScheduleArtifact] = []
         self._path = path
         self._config = config or PoolConfig()
         self._content_hashes: set = set()
@@ -82,7 +82,7 @@ class SchedulePool:
         return len(self._records)
 
     @property
-    def records(self) -> List[ScheduleRecord]:
+    def records(self) -> List[ScheduleArtifact]:
         return list(self._records)
 
     @property
@@ -96,7 +96,7 @@ class SchedulePool:
     def set_phase(self, phase: SearchPhase) -> None:
         self._phase = phase
 
-    def add(self, record: ScheduleRecord) -> bool:
+    def add(self, record: ScheduleArtifact) -> bool:
         """
         Add a schedule record to the pool.
         Returns True if added (not a duplicate), False otherwise.
@@ -121,7 +121,7 @@ class SchedulePool:
         workload: Optional[str] = None,
         db: Optional[str] = None,
         variant: Optional[str] = None,
-    ) -> Optional[ScheduleRecord]:
+    ) -> Optional[ScheduleArtifact]:
         """
         Weighted sample from the pool.
 
@@ -149,7 +149,7 @@ class SchedulePool:
         weights = [self._weight(r) for r in candidates]
         return rng.choices(candidates, weights=weights, k=1)[0]
 
-    def _weight(self, r: ScheduleRecord) -> float:
+    def _weight(self, r: ScheduleArtifact) -> float:
         """Compute sampling weight for a schedule record (dual-objective)."""
         cfg = self._config
         novelty = cfg.novelty_bonus if r.discovered_state_hash else 1.0
@@ -171,7 +171,7 @@ class SchedulePool:
         db: Optional[str] = None,
         variant: Optional[str] = None,
         bug_only: bool = False,
-    ) -> List[ScheduleRecord]:
+    ) -> List[ScheduleArtifact]:
         """List records matching optional filters."""
         result = self._filter(workload=workload, db=db, variant=variant)
         if bug_only:
@@ -180,12 +180,12 @@ class SchedulePool:
 
     def best_by_metric(
         self,
-        key: Callable[[ScheduleRecord], float],
+        key: Callable[[ScheduleArtifact], float],
         *,
         workload: Optional[str] = None,
         db: Optional[str] = None,
         maximize: bool = True,
-    ) -> Optional[ScheduleRecord]:
+    ) -> Optional[ScheduleArtifact]:
         """Return the best record by a user-supplied metric function."""
         candidates = self._filter(workload=workload, db=db)
         if not candidates:
@@ -195,7 +195,7 @@ class SchedulePool:
     def deduplicate(self) -> int:
         """Remove duplicate schedules. Returns number removed."""
         seen: set = set()
-        kept: List[ScheduleRecord] = []
+        kept: List[ScheduleArtifact] = []
         for r in self._records:
             h = r.schedule.content_hash()
             if h not in seen:
@@ -229,7 +229,7 @@ class SchedulePool:
             for line in f:
                 line = line.strip()
                 if line:
-                    r = ScheduleRecord.from_jsonl(line)
+                    r = ScheduleArtifact.from_jsonl(line)
                     h = r.schedule.content_hash()
                     if h not in self._content_hashes:
                         self._content_hashes.add(h)
@@ -237,7 +237,7 @@ class SchedulePool:
                         count += 1
         return count
 
-    def _append_jsonl(self, record: ScheduleRecord) -> None:
+    def _append_jsonl(self, record: ScheduleArtifact) -> None:
         """Append a single record to the JSONL file."""
         if self._path:
             p = Path(self._path)
@@ -250,7 +250,7 @@ class SchedulePool:
         workload: Optional[str] = None,
         db: Optional[str] = None,
         variant: Optional[str] = None,
-    ) -> List[ScheduleRecord]:
+    ) -> List[ScheduleArtifact]:
         result = self._records
         if workload:
             result = [r for r in result if r.workload == workload]

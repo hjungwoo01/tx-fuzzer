@@ -35,15 +35,47 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.experiments.db_adapter import DBAdapter, make_adapter
-from scripts.experiments.micro_runner import CoveragePoint, MicroRunner, TrialResult
-from scripts.experiments.micro_workloads import MICRO_WORKLOADS, MicroWorkload
 
-from .schedule import Schedule, ScheduleEntry, ScheduleRecord
+# Deferred imports to break circular: runner → micro_runner → micro_workloads → schedule_pool.__init__ → runner
+# These are imported inside the functions/methods that need them.
+CoveragePoint = None  # type: ignore[assignment]
+MicroRunner = None  # type: ignore[assignment]
+TrialResult = None  # type: ignore[assignment]
+MicroWorkload = None  # type: ignore[assignment]
+
+
+MICRO_WORKLOADS = None  # type: ignore[assignment]
+
+
+def _ensure_imports() -> None:
+    """Lazy import of micro_runner/micro_workloads to break circular dependency."""
+    global CoveragePoint, MicroRunner, TrialResult, MicroWorkload, MICRO_WORKLOADS
+    if CoveragePoint is None:
+        from scripts.experiments.micro_runner import (
+            CoveragePoint as _CP,
+            MicroRunner as _MR,
+            TrialResult as _TR,
+        )
+        from scripts.experiments.micro_workloads import (
+            MicroWorkload as _MW,
+            MICRO_WORKLOADS as _MWL,
+        )
+        CoveragePoint = _CP
+        MicroRunner = _MR
+        TrialResult = _TR
+        MicroWorkload = _MW
+        MICRO_WORKLOADS = _MWL
+
+from .types import DelayPoint, FinalStateHash, ReplayResult, ReplayVerification
+from .schedule import Schedule, ScheduleArtifact
 from .event_id import get_workload_event_ids
 from .pool import PoolConfig, SchedulePool
 from .mutator import MutationConfig, ScheduleMutator
 from .retention import RetentionPolicy, RetentionReason
 from .base_strategy import BaseStrategy, HeuristicStrategy, RandomStrategy
+
+# Backward-compat alias
+ScheduleRecord = ScheduleArtifact
 
 
 class SchedulePoolRunner:
@@ -61,6 +93,7 @@ class SchedulePoolRunner:
         dsn: str,
         n_workers: int = 4,
         variant: str = "buggy",
+        elle_logger: Any = None,
         **adapter_kwargs: Any,
     ) -> None:
         self.workload = workload
@@ -68,6 +101,7 @@ class SchedulePoolRunner:
         self.dsn = dsn
         self.n_workers = n_workers
         self.variant = variant
+        self.elle_logger = elle_logger
         self.adapter_kwargs = adapter_kwargs
 
     def run_trial_with_schedule(self, schedule: Schedule) -> TrialResult:
@@ -79,6 +113,7 @@ class SchedulePoolRunner:
 
         Fresh DB state is guaranteed by re-running setup_sql each call.
         """
+        _ensure_imports()
         t0 = time.monotonic()
 
         # Fresh setup
@@ -104,11 +139,17 @@ class SchedulePoolRunner:
 
         barrier = threading.Barrier(self.n_workers, timeout=10)
 
+        elle = self.elle_logger
+
         def worker(idx: int) -> None:
             try:
                 barrier.wait()
             except threading.BrokenBarrierError:
                 pass
+
+            # Log invoke
+            if elle:
+                elle.log_invoke(process=idx, f="txn", value=None)
 
             # Apply per-worker delays from schedule
             # "begin" delay: before transaction starts
@@ -135,9 +176,16 @@ class SchedulePoolRunner:
                 ec = result.get("error", "OK")
                 if ec != "OK":
                     error_cats.append(ec)
+                    if elle:
+                        elle.log_fail(process=idx, f="txn", value=result, error=ec)
+                else:
+                    if elle:
+                        elle.log_ok(process=idx, f="txn", value=result)
             except Exception as e:
                 outcomes[idx] = {"outcome": "exception", "error": str(e)}
                 error_cats.append("OTHER")
+                if elle:
+                    elle.log_fail(process=idx, f="txn", value=None, error=str(e))
 
         threads = []
         for i in range(self.n_workers):
@@ -164,10 +212,7 @@ class SchedulePoolRunner:
             except Exception:
                 pass
 
-        if self.workload.needs_state_for_oracle:
-            bug_found, bug_reason = self.workload.oracle(outcomes, state)
-        else:
-            bug_found, bug_reason = self.workload.oracle(outcomes)
+        bug_found, bug_reason = self.workload.oracle(outcomes, state)
 
         elapsed = (time.monotonic() - t0) * 1000
         h = self.workload.canonical_hash(state)
@@ -221,6 +266,7 @@ def run_pool_search(
 
     Returns coverage points, trial results, and the final pool.
     """
+    _ensure_imports()
     wl = MICRO_WORKLOADS[workload_name]
     rng = _random.Random(seed)
 
@@ -378,6 +424,97 @@ def run_pool_search(
     return coverage_points, trial_results, pool
 
 
+def run_pure_strategy(
+    *,
+    db: str,
+    dsn: str,
+    workload_name: str,
+    base_strategy: BaseStrategy,
+    variant: str = "buggy",
+    duration_s: float = 60.0,
+    n_workers: int = 4,
+    seed: int = 42,
+    sample_interval_s: float = 0.5,
+    rep: int = 0,
+    strategy_label: Optional[str] = None,
+    **adapter_kwargs: Any,
+) -> Tuple[List[CoveragePoint], List[TrialResult]]:
+    """
+    Pool-free fixed-strategy runner.
+
+    Each trial draws a *fresh* seed schedule from ``base_strategy`` and
+    executes it. No retention, no parent sampling, no mutation — so any
+    coverage advantage of the pool variants over this is attributable
+    purely to the pool layer.
+
+    This is the entry point used by the external-baseline harness
+    (``evaluate_baselines.py``) to run PCT, IID-Bernoulli, naive uniform,
+    etc., on the same delay-injection substrate.
+    """
+    _ensure_imports()
+    wl = MICRO_WORKLOADS[workload_name]
+    rng = _random.Random(seed)
+
+    all_events = get_workload_event_ids(workload_name, n_workers)
+
+    pool_runner = SchedulePoolRunner(
+        workload=wl,
+        db=db,
+        dsn=dsn,
+        n_workers=n_workers,
+        variant=variant,
+        **adapter_kwargs,
+    )
+
+    label = strategy_label or base_strategy.name
+
+    coverage_points: List[CoveragePoint] = []
+    trial_results: List[TrialResult] = []
+    unique_hashes: set = set()
+    bugs_found = 0
+    txns_done = 0
+    start = time.monotonic()
+    last_sample = start
+
+    while (time.monotonic() - start) < duration_s:
+        sched = base_strategy.seed(all_events, rng)
+        tr = pool_runner.run_trial_with_schedule(sched)
+        trial_results.append(tr)
+        txns_done += 1
+        unique_hashes.add(tr.canonical_hash)
+        if tr.bug_found:
+            bugs_found += 1
+
+        now = time.monotonic()
+        if (now - last_sample) >= sample_interval_s:
+            elapsed = now - start
+            coverage_points.append(CoveragePoint(
+                time_s=round(elapsed, 3),
+                db=db,
+                workload=workload_name,
+                strategy=label,
+                rep=rep,
+                unique_states=len(unique_hashes),
+                txns_done=txns_done,
+                bugs_found=bugs_found,
+            ))
+            last_sample = now
+
+    elapsed = time.monotonic() - start
+    coverage_points.append(CoveragePoint(
+        time_s=round(elapsed, 3),
+        db=db,
+        workload=workload_name,
+        strategy=label,
+        rep=rep,
+        unique_states=len(unique_hashes),
+        txns_done=txns_done,
+        bugs_found=bugs_found,
+    ))
+
+    return coverage_points, trial_results
+
+
 def run_random_pool_search(
     *,
     max_delay_ms: float = 100.0,
@@ -425,6 +562,7 @@ def replay_schedule(
     Returns dict with:
       total, bug_count, bug_rate, outcomes, canonical_hashes
     """
+    _ensure_imports()
     wl = MICRO_WORKLOADS[workload_name]
     runner = SchedulePoolRunner(
         workload=wl,

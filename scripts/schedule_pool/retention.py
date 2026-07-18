@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional, Set
 
-from .schedule import ScheduleRecord
+from .schedule import ScheduleArtifact
 from .pool import SchedulePool
 
 
@@ -58,7 +58,7 @@ class RetentionPolicy:
     def unique_state_count(self) -> int:
         return len(self._seen_states)
 
-    def evaluate(self, candidate: ScheduleRecord) -> RetentionReason:
+    def evaluate(self, candidate: ScheduleArtifact) -> RetentionReason:
         """
         Check whether a candidate should be retained.
         Returns the reason for retention or NONE.
@@ -125,7 +125,7 @@ class RetentionPolicy:
 
         return RetentionReason.NONE
 
-    def accept(self, candidate: ScheduleRecord) -> bool:
+    def accept(self, candidate: ScheduleArtifact) -> bool:
         """
         Evaluate and, if retained, update internal tracking.
         Returns True if the candidate was accepted.
@@ -147,7 +147,7 @@ class RetentionPolicy:
         self._pool.add(candidate)
         return True
 
-    def force_accept(self, candidate: ScheduleRecord, reason: str = "forced") -> None:
+    def force_accept(self, candidate: ScheduleArtifact, reason: str = "forced") -> None:
         """Force-add a candidate (used for seeding the pool)."""
         candidate.retention_reason = reason
         if candidate.discovered_state_hash:
