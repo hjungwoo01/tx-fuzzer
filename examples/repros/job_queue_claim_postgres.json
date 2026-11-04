@@ -1,0 +1,143 @@
+{
+  "schedule_id": "99afcb284d22",
+  "parent_schedule_id": "5198a9db9f41",
+  "db": "postgres",
+  "workload": "job_queue_claim",
+  "variant": "buggy",
+  "strategy": "minimized",
+  "seed": 11,
+  "schedule": [
+    {
+      "event": "s0_t0_q4_commit",
+      "delay_ms": 43.736
+    }
+  ],
+  "discovered_state_hash": "037bec1e28630590",
+  "bug_found": true,
+  "bug_reason": "Double claim! Workers: ['w0', 'w1']",
+  "control_clean": null,
+  "replay_rate_buggy": 1.0,
+  "replay_rate_control": null,
+  "total_delay_ms": 43.736,
+  "delay_count": 1,
+  "retention_reason": "minimized",
+  "created_at": "2026-11-04T13:45:26.466848+00:00",
+  "n_workers": 2,
+  "injection_mode": "step",
+  "bug_category": "isolation_anomaly",
+  "db_version": "PostgreSQL 16.15",
+  "stagger_ms": 25.0,
+  "evidence_trace": [
+    {
+      "worker": 0,
+      "event": "s0_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 0.067,
+      "end_ms": 0.552,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT status FROM jobs WHERE id = 1",
+      "delay_ms": 0.0,
+      "start_ms": 0.564,
+      "end_ms": 1.696,
+      "status": "OK",
+      "result": "ready"
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q2_exec",
+      "phase": "exec",
+      "sql": "UPDATE jobs SET status = 'claimed', worker = %s WHERE id = 1",
+      "delay_ms": 0.0,
+      "start_ms": 1.75,
+      "end_ms": 2.372,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q3_exec",
+      "phase": "exec",
+      "sql": "INSERT INTO claims (job_id, worker, ts) VALUES (1, %s, %s)",
+      "delay_ms": 0.0,
+      "start_ms": 2.399,
+      "end_ms": 2.875,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 25.235,
+      "end_ms": 26.174,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT status FROM jobs WHERE id = 1",
+      "delay_ms": 0.0,
+      "start_ms": 26.197,
+      "end_ms": 27.556,
+      "status": "OK",
+      "result": "ready"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q2_exec",
+      "phase": "exec",
+      "sql": "UPDATE jobs SET status = 'claimed', worker = %s WHERE id = 1",
+      "delay_ms": 0.0,
+      "start_ms": 27.595,
+      "end_ms": 48.611,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q4_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 43.736,
+      "start_ms": 46.771,
+      "end_ms": 48.268,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q3_exec",
+      "phase": "exec",
+      "sql": "INSERT INTO claims (job_id, worker, ts) VALUES (1, %s, %s)",
+      "delay_ms": 0.0,
+      "start_ms": 48.66,
+      "end_ms": 49.252,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q4_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 49.271,
+      "end_ms": 50.293,
+      "status": "OK",
+      "result": ""
+    }
+  ],
+  "format_version": 2
+}

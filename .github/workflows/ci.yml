@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # Before installing anything: the SQLite workshop path must need only
+      # the Python standard library.
+      - name: Zero-dependency lab (stdlib only, SQLite)
+        run: python -m isotest lab --db sqlite
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Tests (pytest must see failures; see tests/test_schedule_pool.py)
+        run: python -m pytest tests -q
+      - name: Harness self-check (serial runs + fixed variants under attack)
+        run: python -m isotest selfcheck --db sqlite --db postgres --adversarial
+      - name: Shipped example artifacts still reproduce (and fixes stay clean)
+        run: make replay-examples
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./...

@@ -1,0 +1,147 @@
+{
+  "schedule_id": "8e8902c7cf6b",
+  "parent_schedule_id": "4478bfd97497",
+  "db": "postgres",
+  "workload": "fk_phantom",
+  "variant": "naive_fix",
+  "strategy": "minimized",
+  "seed": 11,
+  "schedule": [
+    {
+      "event": "s0_t0_q1_exec",
+      "delay_ms": 43.578
+    },
+    {
+      "event": "s1_t0_q3_commit",
+      "delay_ms": 43.928
+    }
+  ],
+  "discovered_state_hash": "6a60c1b2c90cf2e2",
+  "bug_found": true,
+  "bug_reason": "FK phantom! 1 orphan child row(s) referencing deleted parent",
+  "control_clean": null,
+  "replay_rate_buggy": 1.0,
+  "replay_rate_control": null,
+  "total_delay_ms": 87.506,
+  "delay_count": 2,
+  "retention_reason": "minimized",
+  "created_at": "2026-11-04T13:31:20.673833+00:00",
+  "n_workers": 3,
+  "injection_mode": "step",
+  "bug_category": "isolation_anomaly",
+  "db_version": "PostgreSQL 16.15",
+  "stagger_ms": 25.0,
+  "evidence_trace": [
+    {
+      "worker": 0,
+      "event": "s0_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 0.079,
+      "end_ms": 0.504,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 25.169,
+      "end_ms": 25.593,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT 1 FROM parents WHERE id = 1 FOR UPDATE",
+      "delay_ms": 0.0,
+      "start_ms": 25.608,
+      "end_ms": 26.488,
+      "status": "OK",
+      "result": "1"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q2_exec",
+      "phase": "exec",
+      "sql": "INSERT INTO children (parent_id) VALUES (%s)",
+      "delay_ms": 0.0,
+      "start_ms": 26.516,
+      "end_ms": 27.076,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q1_exec",
+      "phase": "exec",
+      "sql": "DELETE FROM parents WHERE id = 1 AND NOT EXISTS (SELECT 1 FROM \u2026",
+      "delay_ms": 43.578,
+      "start_ms": 44.197,
+      "end_ms": 72.388,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 2,
+      "event": "s2_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 50.205,
+      "end_ms": 50.713,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 2,
+      "event": "s2_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT 1 FROM parents WHERE id = 1 FOR UPDATE",
+      "delay_ms": 0.0,
+      "start_ms": 50.731,
+      "end_ms": 73.863,
+      "status": "OK",
+      "result": "\u2205"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q3_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 43.928,
+      "start_ms": 71.132,
+      "end_ms": 72.213,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q2_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 72.424,
+      "end_ms": 73.693,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 2,
+      "event": "s2_t0_q2_rollback",
+      "phase": "rollback",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 73.886,
+      "end_ms": 74.547,
+      "status": "OK",
+      "result": ""
+    }
+  ],
+  "format_version": 2
+}
