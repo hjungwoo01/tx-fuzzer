@@ -113,7 +113,7 @@ Severity: **P0** = results are wrong; **P1** = reproducibility or security;
 | EDN escaping; isolation whitelist; `mkdtemp`; DSN redaction | `elle_logger.py`, `db_adapter.py`, `run_demo.py`, CLI | round-trip test; whitelist test |
 | Schedule minimization: ddmin + delay shrinking with a safety margin | `scripts/schedule_pool/minimize.py` | property test (1-minimality on random predicates) |
 | Per-session database sandboxes | `isotest/cli.py` | `test_pg_sandbox_isolates_concurrent_sessions` |
-| CI: stdlib-only lab, pytest, adversarial selfcheck (SQLite + PG 16), example replays, Go | `.github/workflows/ci.yml` | run locally step by step |
+| CI: stdlib-only lab, pytest, adversarial selfcheck (SQLite + PG 16), example replays, Go | `.github/workflows/ci.yml` | run locally step by step.  On its first run, CI's Python 3.9 job caught a bug in the new CLI: Python ≤ 3.11 argparse prefix-matched `replay --n` against `--no-color`/`--no-sandbox`.  Fixed (`allow_abbrev=False`), regression-tested, and re-verified on 3.9.25 and 3.11 |
 
 ### 2.2 Workshop adaptations
 
@@ -152,7 +152,7 @@ Severity: **P0** = results are wrong; **P1** = reproducibility or security;
 | Depth-1 sweep vs depth-2 bug | the sweep finds 0 of 15 single pauses for `fk_phantom` `naive_fix`; exploration finds it in 3 trials |
 | Fix validation (PG, 3 workers, 400 explored schedules) | `naive_fix` broken in 192 (doctors) and 168 (fk); fixed 0 and 0 |
 | Shipped artifacts | 30/30 reproduced, fixed 0/30; under full CPU saturation 20/20 and 0/20.  One miss was observed in ~400 job-queue replays, which is why CI uses `--min-rate 0.9` |
-| Test suite | 33 → 69 tests; pytest catches injected failures |
+| Test suite | 33 → 70 tests; pytest catches injected failures; CI matrix Python 3.9 + 3.13 |
 
 ### 2.4 Recommendations not implemented here
 
