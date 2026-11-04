@@ -1308,6 +1308,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Find, explain, and pin down transaction-isolation bugs by controlling "
                     "*when* each SQL statement runs.",
         epilog="Start with:  python -m isotest doctor  &&  python -m isotest lab",
+        # Python <= 3.11 prefix-matches *every* --option against the top-level
+        # parser, including subcommand options: `replay x.json --n 5` failed
+        # with "ambiguous option: --n could match --no-color, --no-sandbox".
+        allow_abbrev=False,
     )
     parser.add_argument("--version", action="version", version=f"isotest {__version__}")
     parser.add_argument("--json", action="store_true", help="machine-readable output only")

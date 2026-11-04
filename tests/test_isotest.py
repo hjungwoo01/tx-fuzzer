@@ -676,3 +676,14 @@ def test_replay_min_rate_tolerates_rare_misses_but_never_a_dirty_control(monkeyp
     ok_control, rows = cli.replay_report(art, cfg, out, n=10, variants=["fixed"],
                                          show_timeline=False, min_rate=0.1)
     assert not ok_control and rows[0]["status"] == "BROKEN"
+
+
+def test_top_level_parser_does_not_abbreviate_subcommand_options():
+    # On Python <= 3.11 the top-level parser prefix-matched `--n` (a `replay`
+    # option) against --no-color/--no-sandbox and exited with "ambiguous
+    # option".  Newer Pythons do not, so assert the guard itself too.
+    from isotest.cli import build_parser
+    parser = build_parser()
+    assert parser.allow_abbrev is False
+    args = parser.parse_args(["replay", "a.json", "--n", "5", "--min-rate", "0.9"])
+    assert (args.n, args.min_rate) == (5, 0.9)
