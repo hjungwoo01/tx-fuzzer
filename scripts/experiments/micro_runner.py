@@ -55,6 +55,14 @@ class TrialResult:
     bug_reason: str
     elapsed_ms: float
     error_categories: List[str] = field(default_factory=list)
+    #: BugCategory of the verdict ("" when no bug): isolation_anomaly,
+    #: swallowed_error, or outcome_mismatch.
+    bug_category: str = ""
+    #: Statement-level trace (scripts.schedule_pool.injection.TraceEvent),
+    #: populated by the schedule executor.
+    trace: List[Any] = field(default_factory=list)
+    #: True if any worker exceeded the trial timeout and was interrupted.
+    timed_out: bool = False
 
 
 def _make_connections(
@@ -116,16 +124,16 @@ class MicroRunner:
         # Create a shared setup adapter
         setup_adapter = make_adapter(self.db, self.dsn, **self.adapter_kwargs)
         try:
-            setup_adapter.setup(self.workload.setup_sql(self.db))
+            setup_adapter.setup(self.workload.setup_for(self.db, self.variant))
         finally:
             setup_adapter.close()
 
         # Create per-worker adapters
         adapters = _make_connections(self.db, self.dsn, self.n_workers, **self.adapter_kwargs)
-        outcomes: List[Dict[str, Any]] = [{}] * self.n_workers
+        outcomes: List[Dict[str, Any]] = [{} for _ in range(self.n_workers)]
         error_cats: List[str] = []
 
-        fn = self.workload.run_buggy if self.variant == "buggy" else self.workload.run_fixed
+        fn = self.workload.variant_fn(self.variant)
 
         # Run workers concurrently using threads (per-session FIFO preserved)
         barrier = threading.Barrier(self.n_workers, timeout=10)

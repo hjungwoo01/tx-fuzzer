@@ -19,6 +19,12 @@ from typing import Any, Dict, List, Optional
 
 from .types import DelayPoint, FinalStateHash
 
+#: Version of the ScheduleArtifact JSON layout written by this code.
+#:   1 -- original layout (no n_workers / injection_mode; implies start_skew)
+#:   2 -- adds n_workers, injection_mode, bug_category, db_version,
+#:        stagger_ms, evidence_trace
+ARTIFACT_FORMAT_VERSION = 2
+
 
 class Schedule:
     """
@@ -158,6 +164,25 @@ class ScheduleArtifact:
     delay_count: int = 0
     retention_reason: str = ""
     created_at: str = ""
+    # --- reproducibility metadata (format_version >= 2) ---
+    #: Number of concurrent sessions the schedule was found with.  Replays
+    #: must use the same value; ``None`` means unknown (legacy file).
+    n_workers: Optional[int] = None
+    #: How delay points were honored: "step" or "start_skew" (see
+    #: scripts.schedule_pool.injection).  Legacy files imply "start_skew".
+    injection_mode: str = "start_skew"
+    #: BugCategory of the finding: isolation_anomaly / swallowed_error / ...
+    bug_category: str = ""
+    #: Server version string of the database the artifact was found on.
+    db_version: str = ""
+    #: Baseline start offset between consecutive workers (ms); 0 = all start
+    #: together (historical).  Replays must use the same value.
+    stagger_ms: float = 0.0
+    #: Statement-level trace of one execution that exhibited the outcome
+    #: (list of TraceEvent dicts); lets ``isotest show`` explain the bug
+    #: without a database.
+    evidence_trace: List[Dict[str, Any]] = field(default_factory=list)
+    format_version: int = ARTIFACT_FORMAT_VERSION
 
     # --- Aliases for tool-track framing ---
 
@@ -207,6 +232,13 @@ class ScheduleArtifact:
             "delay_count": self.delay_count,
             "retention_reason": self.retention_reason,
             "created_at": self.created_at,
+            "n_workers": self.n_workers,
+            "injection_mode": self.injection_mode,
+            "bug_category": self.bug_category,
+            "db_version": self.db_version,
+            "stagger_ms": self.stagger_ms,
+            "evidence_trace": list(self.evidence_trace),
+            "format_version": self.format_version,
         }
 
     @classmethod
@@ -229,6 +261,13 @@ class ScheduleArtifact:
             replay_rate_control=d.get("replay_rate_control"),
             retention_reason=d.get("retention_reason", ""),
             created_at=d.get("created_at", ""),
+            n_workers=d.get("n_workers"),
+            injection_mode=d.get("injection_mode") or "start_skew",
+            bug_category=d.get("bug_category", "") or "",
+            db_version=d.get("db_version", "") or "",
+            stagger_ms=float(d.get("stagger_ms", 0.0) or 0.0),
+            evidence_trace=list(d.get("evidence_trace") or []),
+            format_version=int(d.get("format_version", 1)),
         )
 
     def to_jsonl(self) -> str:

@@ -40,10 +40,20 @@ from scripts.schedule_pool import (
 from scripts.schedule_pool.types import FinalStateHash
 from scripts.schedule_pool.event_id import get_workload_event_ids
 from scripts.schedule_pool.runner import SchedulePoolRunner
+from scripts.schedule_pool.replay import assess_replay
 from scripts.experiments.db_adapter import make_adapter
 from scripts.experiments.micro_workloads import MICRO_WORKLOADS
 
 import random
+
+
+def _private_sqlite_path(prefix: str) -> str:
+    """A fresh SQLite path inside a new 0700 temp dir.
+
+    Replaces ``tempfile.mktemp`` (deprecated: the name can be claimed by
+    another process between creation and use -- CWE-377).
+    """
+    return os.path.join(tempfile.mkdtemp(prefix=prefix), "db.sqlite")
 
 
 DEFAULT_DSNS = {
@@ -70,7 +80,7 @@ def cmd_explore(args: argparse.Namespace) -> list[ScheduleArtifact]:
     if db == "sqlite":
         dsn = os.environ.get("SQLITE_DSN", "")
         if not dsn:
-            dsn = tempfile.mktemp(suffix=".sqlite", prefix="isotest_demo_")
+            dsn = _private_sqlite_path("isotest_demo_")
         DEFAULT_DSNS["sqlite"] = dsn
     dsn = DEFAULT_DSNS[db]
 
@@ -127,7 +137,11 @@ def cmd_explore(args: argparse.Namespace) -> list[ScheduleArtifact]:
             discovered_state_hash=tr.canonical_hash,
             bug_found=tr.bug_found,
             bug_reason=tr.bug_reason,
+            bug_category=tr.bug_category,
+            n_workers=n_workers,
+            injection_mode=pool_runner.injection_mode.value,
         )
+        retention.accept(record)
 
         if tr.bug_found:
             bugs += 1
@@ -139,20 +153,24 @@ def cmd_explore(args: argparse.Namespace) -> list[ScheduleArtifact]:
                     replay_hits += 1
             record.replay_rate_buggy = replay_hits / 6
 
-            # Save artifact
-            artifact_path = output_dir / f"{workload_name}_{db}.json"
+            # Save each bug-triggering schedule under its own name (this used
+            # to overwrite one file per bug while reporting N saved), and keep
+            # the most reliable one at the stable path used by explore-replay.
+            artifact_path = output_dir / f"{workload_name}_{db}_{record.schedule_id}.json"
             record.save(artifact_path)
             saved_artifacts.append(record)
+            best = max(saved_artifacts, key=lambda a: (a.replay_rate_buggy or 0.0,
+                                                       -a.delay_count, -a.total_delay_ms))
+            best.save(output_dir / f"{workload_name}_{db}.json")
             print(f"  [BUG] {tr.bug_reason} | replay_rate={record.replay_rate_buggy:.0%} | saved → {artifact_path}")
-
-        retention.accept(record)
 
     elle.close()
 
     print(f"\n[isotest] Exploration complete:")
     print(f"  trials={trials}, bugs={bugs}, unique_states={len(unique_hashes)}, pool_size={pool.size}")
     if saved_artifacts:
-        print(f"  Saved {len(saved_artifacts)} artifact(s) to {output_dir}/")
+        print(f"  Saved {len(saved_artifacts)} artifact(s) to {output_dir}/ "
+              f"(most reliable: {workload_name}_{db}.json)")
     else:
         print(f"  No bugs found in {duration}s — try a longer duration or different workload")
     return saved_artifacts
@@ -172,7 +190,7 @@ def cmd_replay(args: argparse.Namespace) -> None:
     if db == "sqlite":
         dsn = os.environ.get("SQLITE_DSN", "")
         if not dsn:
-            dsn = tempfile.mktemp(suffix=".sqlite", prefix="isotest_replay_")
+            dsn = _private_sqlite_path("isotest_replay_")
     else:
         dsn = DEFAULT_DSNS.get(db, "")
 
@@ -190,16 +208,15 @@ def cmd_replay(args: argparse.Namespace) -> None:
     )
 
     print(f"[isotest] Replay verification:")
-    print(f"  hash_match_rate = {verification.hash_match_rate:.0%} ({verification.hash_match_count}/{verification.total_replays})")
+    if verification.expected_hash:
+        print(f"  hash_match_rate = {verification.hash_match_rate:.0%} ({verification.hash_match_count}/{verification.total_replays})")
+    else:
+        print("  hash_match_rate = n/a (artifact has no recorded FinalStateHash)")
     print(f"  bug_replay_rate = {verification.bug_replay_rate:.0%} ({verification.bug_replay_count}/{verification.total_replays})")
     print(f"  unique_hashes   = {verification.unique_hashes}")
 
-    if verification.hash_match_rate == 1.0:
-        print("\n  PASS: all replays matched the expected FinalStateHash")
-    elif verification.hash_match_rate >= 0.8:
-        print(f"\n  WARN: {verification.hash_match_rate:.0%} match rate — mostly deterministic")
-    else:
-        print(f"\n  LOW:  {verification.hash_match_rate:.0%} match rate — schedule may be timing-sensitive")
+    status, detail = assess_replay(verification, expect_bug=artifact.bug_found)
+    print(f"\n  {status}: {detail}")
 
 
 def cmd_explore_replay(args: argparse.Namespace) -> None:

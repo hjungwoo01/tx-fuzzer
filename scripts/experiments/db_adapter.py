@@ -18,6 +18,24 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .error_taxonomy import ErrorCategory, classify_error
 
 
+#: The only isolation levels interpolated into SET TRANSACTION statements.
+#: Whitelisting keeps a level read from a CLI flag / config file from ever
+#: becoming SQL injection.
+VALID_ISOLATION_LEVELS = (
+    "READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE",
+)
+
+
+def checked_isolation_level(level: str) -> str:
+    """Normalize ``level`` and reject anything that is not a standard level."""
+    norm = " ".join(str(level).upper().split())
+    if norm not in VALID_ISOLATION_LEVELS:
+        raise ValueError(
+            f"invalid isolation level {level!r}; expected one of "
+            f"{', '.join(VALID_ISOLATION_LEVELS)}")
+    return norm
+
+
 @dataclass
 class ExecResult:
     """Result of a single SQL execution."""
@@ -101,8 +119,9 @@ class PostgresExpAdapter(DBAdapter):
         assert self._conn is not None
         self._conn.autocommit = False
         if isolation_level:
+            level = checked_isolation_level(isolation_level)
             with self._conn.cursor() as cur:
-                cur.execute(f"SET TRANSACTION ISOLATION LEVEL {isolation_level}")
+                cur.execute(f"SET TRANSACTION ISOLATION LEVEL {level}")
 
     def exec(self, sql: str, params: Optional[Sequence[Any]] = None) -> ExecResult:
         assert self._conn is not None
@@ -214,8 +233,9 @@ class MySQLExpAdapter(DBAdapter):
         assert self._conn is not None
         self._conn.autocommit(False)
         if isolation_level:
+            level = checked_isolation_level(isolation_level)
             with self._conn.cursor() as cur:
-                cur.execute(f"SET TRANSACTION ISOLATION LEVEL {isolation_level}")
+                cur.execute(f"SET TRANSACTION ISOLATION LEVEL {level}")
         with self._conn.cursor() as cur:
             cur.execute("BEGIN")
 
