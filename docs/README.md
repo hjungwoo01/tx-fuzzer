@@ -7,7 +7,9 @@ Use this file to distinguish current documentation from historical notes.
 - [README.md](../README.md): repository overview and quick start
 - [ARCHITECTURE.md](ARCHITECTURE.md): current component map
 - [multidb_evaluation.md](multidb_evaluation.md): main schedule-pool evaluation workflow
-- [../WORKSHOP.md](../WORKSHOP.md): workshop/demo entry points
+- [../WORKSHOP.md](../WORKSHOP.md): hands-on labs and facilitator guide (`python -m isotest`)
+- [workshop/SUBMISSION.md](workshop/SUBMISSION.md): workshop submission package
+- [workshop/AUDIT.md](workshop/AUDIT.md): audit findings, fixes, verification
 - [../DOCKER.md](../DOCKER.md): container setups
 
 ## Active auxiliary docs
