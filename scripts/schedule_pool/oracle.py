@@ -15,7 +15,32 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from .types import OracleVerdict
+from .types import BugCategory, OracleVerdict
+
+
+def _reported_vs_committed(
+    noun: str, reported: int, committed: int, committed_label: str,
+) -> OracleVerdict:
+    """Verdict for 'workers reported N successes, database committed M'.
+
+    When workers report more successes than the database committed, a write
+    failed (e.g. SQLite BUSY, a lock timeout) and the application ignored the
+    error -- a swallowed-error bug, not an isolation anomaly.  The reverse is
+    a client/server outcome mismatch.
+    """
+    if reported > committed:
+        return OracleVerdict(
+            True,
+            f"Phantom success: {reported} worker(s) reported {noun} but "
+            f"{committed_label}={committed} (a failed write was reported as success)",
+            BugCategory.SWALLOWED_ERROR,
+        )
+    return OracleVerdict(
+        True,
+        f"Unreported commit: {reported} worker(s) reported {noun} but "
+        f"{committed_label}={committed}",
+        BugCategory.OUTCOME_MISMATCH,
+    )
 
 
 class Oracle(ABC):
@@ -62,7 +87,16 @@ class DoubleClaimOracle(Oracle):
 
 
 class OverdraftOracle(Oracle):
-    """Bug if final balance < 0 or more successful withdrawals than possible."""
+    """Bug if final balance < 0 or more successful withdrawals than possible.
+
+    ``initial_balance`` / ``amount`` must match the workload's seed data and
+    withdrawal size (``bank_overdraft``: 100 and 80, so at most one
+    withdrawal can succeed).
+    """
+
+    def __init__(self, initial_balance: int = 100, amount: int = 80) -> None:
+        self._initial = initial_balance
+        self._amount = amount
 
     @property
     def name(self) -> str:
@@ -76,24 +110,26 @@ class OverdraftOracle(Oracle):
         balance = final_state.get("balance", 0)
         successful = final_state.get("successful_withdrawals", 0)
         if balance < 0:
-            return OracleVerdict(True, f"Overdraft! balance={balance}")
-        if successful > 1:
-            return OracleVerdict(True, f"Multiple overdraft-risk withdrawals succeeded: {successful}")
-        n_withdrawn = sum(1 for o in outcomes if o.get("outcome") == "withdrawn")
-        if n_withdrawn != successful:
+            return OracleVerdict(True, f"Overdraft! balance={balance}",
+                                 BugCategory.ISOLATION_ANOMALY)
+        max_ok = self._initial // self._amount if self._amount else successful
+        if successful > max_ok:
             return OracleVerdict(
                 True,
-                f"Lost-write: {n_withdrawn} workers reported withdrawn, "
-                f"successful_withdrawals={successful}",
+                f"Multiple overdraft-risk withdrawals succeeded: {successful}",
+                BugCategory.ISOLATION_ANOMALY,
             )
-        initial = 100
-        amount = 80
-        expected_balance = initial - amount * n_withdrawn
+        n_withdrawn = sum(1 for o in outcomes if o.get("outcome") == "withdrawn")
+        if n_withdrawn != successful:
+            return _reported_vs_committed(
+                "withdrawn", n_withdrawn, successful, "successful_withdrawals")
+        expected_balance = self._initial - self._amount * n_withdrawn
         if balance != expected_balance:
             return OracleVerdict(
                 True,
-                f"Replay mismatch: expected balance={expected_balance} "
-                f"({n_withdrawn} withdrawals), observed={balance}",
+                f"Conservation violated: expected balance={expected_balance} "
+                f"after {n_withdrawn} withdrawal(s), observed={balance}",
+                BugCategory.ISOLATION_ANOMALY,
             )
         return OracleVerdict(False, f"balance={balance}, successful={successful}")
 
@@ -285,11 +321,8 @@ class UniqueViolationOracle(Oracle):
         counts = final_state.get("counts", [])
         total_rows = sum(c for _n, c in counts) if counts else 0
         if n_registered > 0 and total_rows != n_registered:
-            return OracleVerdict(
-                True,
-                f"Lost-write: {n_registered} workers reported registered, "
-                f"rows={total_rows}",
-            )
+            return _reported_vs_committed(
+                "registered", n_registered, total_rows, "rows")
         return OracleVerdict(False, "no duplicates")
 
 
@@ -318,11 +351,8 @@ class InventoryOversellOracle(Oracle):
             )
         n_sold_outcomes = sum(1 for o in outcomes if o.get("outcome") == "sold")
         if sold != n_sold_outcomes:
-            return OracleVerdict(
-                True,
-                f"Lost-write: {n_sold_outcomes} workers reported sold, "
-                f"sold_count={sold}",
-            )
+            return _reported_vs_committed(
+                "sold", n_sold_outcomes, sold, "sold_count")
         if stock + sold != self._initial_stock:
             return OracleVerdict(
                 True,
@@ -364,21 +394,34 @@ class LongForkOracle(Oracle):
         return "long_fork"
 
     def check(self, outcomes, final_state) -> OracleVerdict:
-        observed_orders = [
-            tuple(o.get("observed_order", ()))
-            for o in outcomes
-            if o.get("outcome") == "observed"
-            and isinstance(o.get("observed_order"), (list, tuple))
-        ]
-        distinct = set(observed_orders)
-        # Filter unobservable (incomplete) views
-        meaningful = {o for o in distinct if len(o) == 2}
-        if len(meaningful) > 1:
-            return OracleVerdict(
-                True,
-                f"Long fork (G-SIb)! observers disagree: {sorted(meaningful)}",
-            )
-        return OracleVerdict(False, f"all observers agree: {sorted(meaningful)}")
+        # Each observer's view is the *set* of writes it saw (a, b).  Observers
+        # that run at different times legitimately see different prefixes of
+        # one commit order -- e.g. {} and {a} -- and those views form a chain
+        # under set inclusion.  A long fork is two *incomparable* views: one
+        # observer saw a-but-not-b while another saw b-but-not-a.  (The old
+        # check flagged any two distinct views, which is unsound: it reported
+        # [(0, 0), (1, 0)] as a long fork on a serial history.)
+        views = []
+        for o in outcomes:
+            order = o.get("observed_order")
+            if o.get("outcome") != "observed" or not isinstance(order, (list, tuple)):
+                continue
+            if len(order) != 2:
+                continue  # unobservable / incomplete view
+            a, b = order
+            views.append(frozenset(k for k, v in (("a", a), ("b", b)) if v))
+        for i in range(len(views)):
+            for j in range(i + 1, len(views)):
+                vi, vj = views[i], views[j]
+                if not (vi <= vj or vj <= vi):
+                    return OracleVerdict(
+                        True,
+                        f"Long fork (G-SIb)! observers saw incomparable writes: "
+                        f"{sorted(vi)} vs {sorted(vj)}",
+                        BugCategory.ISOLATION_ANOMALY,
+                    )
+        shown = sorted({tuple(sorted(v)) for v in views})
+        return OracleVerdict(False, f"observer views form a chain: {shown}")
 
 
 class MultiKeyOracle(Oracle):

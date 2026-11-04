@@ -119,11 +119,45 @@ class FinalStateHash:
         return hash(self.value)
 
 
+class BugCategory:
+    """What kind of defect an OracleVerdict reports.
+
+    Keeping these apart matters: a database that correctly *rejects* a
+    conflicting write (e.g. SQLite ``BUSY``) while the application ignores the
+    error and reports success is an application bug, not an isolation anomaly.
+    Conflating the two teaches the wrong lesson about the database.
+    """
+    NONE = ""
+    #: The database let an interleaving through that violates the invariant
+    #: (overdraft, double claim, lost update, write skew, phantom, ...).
+    ISOLATION_ANOMALY = "isolation_anomaly"
+    #: A worker reported success for a write the database did not commit
+    #: (a statement error was ignored by the application code).
+    SWALLOWED_ERROR = "swallowed_error"
+    #: The database committed something no worker reported (e.g. the client
+    #: errored or timed out after the server committed).
+    OUTCOME_MISMATCH = "outcome_mismatch"
+
+    ALL = (ISOLATION_ANOMALY, SWALLOWED_ERROR, OUTCOME_MISMATCH)
+
+
 @dataclass(frozen=True)
 class OracleVerdict:
-    """Result of an Oracle check on an interleaving outcome."""
+    """Result of an Oracle check on an interleaving outcome.
+
+    ``category`` is optional for backward compatibility; oracles that set
+    ``bug_found=True`` without a category are treated as reporting an
+    isolation anomaly.
+    """
     bug_found: bool
     reason: str
+    category: str = BugCategory.NONE
+
+    def __post_init__(self) -> None:
+        if self.bug_found and not self.category:
+            object.__setattr__(self, "category", BugCategory.ISOLATION_ANOMALY)
+        if not self.bug_found and self.category:
+            object.__setattr__(self, "category", BugCategory.NONE)
 
 
 @dataclass

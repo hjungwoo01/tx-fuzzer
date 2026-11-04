@@ -316,8 +316,13 @@ def bank_oracle_with_state(outcomes: List[Dict[str, Any]], state: Dict[str, Any]
 def bank_canonical(adapter: DBAdapter, outcomes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     adapter.begin()
     r1 = adapter.exec("SELECT balance FROM accounts WHERE id = 1")
-    r2 = adapter.exec("SELECT COUNT(*) FROM withdrawals WHERE success = 1" if adapter.db_name != "sqlite"
-                       else "SELECT COUNT(*) FROM withdrawals WHERE success = 1")
+    # `success` is BOOLEAN on PostgreSQL, where `success = 1` is a type error
+    # ("operator does not exist: boolean = integer").  That error used to be
+    # swallowed, the count defaulted to 0, and the oracle then flagged 100%
+    # of PostgreSQL trials -- buggy *and* fixed -- as lost writes.
+    r2 = adapter.exec("SELECT COUNT(*) FROM withdrawals WHERE success = TRUE"
+                      if adapter.db_name == "postgres"
+                      else "SELECT COUNT(*) FROM withdrawals WHERE success = 1")
     r3 = adapter.exec("SELECT COUNT(*) FROM withdrawals")
     adapter.commit()
     balance = r1.rows[0][0] if r1.rows else 0
@@ -1038,13 +1043,47 @@ class MicroWorkload:
     run_fixed: Callable[[DBAdapter, int], Dict[str, Any]]
     oracle_instance: Oracle                          # pluggable Oracle implementation
     canonical: Callable[[DBAdapter], Dict[str, Any]]
+    #: Optional setup used only by the "fixed" variant (e.g. a fix that is a
+    #: schema constraint, such as a UNIQUE index).  Defaults to setup_sql.
+    setup_sql_fixed: Optional[Callable[[str], List[str]]] = None
+    #: Additional named variants, e.g. {"naive_fix": fn} for a plausible fix
+    #: that does NOT hold under every interleaving -- useful for teaching.
+    extra_variants: Dict[str, Callable[[DBAdapter, int], Dict[str, Any]]] = field(
+        default_factory=dict)
+
+    @property
+    def variants(self) -> List[str]:
+        return ["buggy", "fixed", *sorted(self.extra_variants)]
+
+    def setup_for(self, db: str, variant: str = "buggy") -> List[str]:
+        """Setup statements for ``variant`` on ``db``."""
+        if variant == "fixed" and self.setup_sql_fixed is not None:
+            return self.setup_sql_fixed(db)
+        return self.setup_sql(db)
+
+    def variant_fn(self, variant: str) -> Callable[[DBAdapter, int], Dict[str, Any]]:
+        """The transaction function for a named variant."""
+        if variant == "buggy":
+            return self.run_buggy
+        if variant == "fixed":
+            return self.run_fixed
+        if variant in self.extra_variants:
+            return self.extra_variants[variant]
+        raise KeyError(
+            f"workload {self.name!r} has no variant {variant!r} "
+            f"(available: {', '.join(self.variants)})")
+
+    def verdict(self, outcomes: List[Dict[str, Any]],
+                state: Optional[Dict[str, Any]] = None) -> OracleVerdict:
+        """Full, categorized oracle verdict."""
+        return self.oracle_instance.check(outcomes, state or {})
 
     def oracle(self, outcomes: List[Dict[str, Any]], state: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
         """Unified oracle interface — delegates to the Oracle instance.
 
         Accepts both the legacy (outcomes,) and (outcomes, state) signatures.
         """
-        verdict = self.oracle_instance.check(outcomes, state or {})
+        verdict = self.verdict(outcomes, state)
         return verdict.bug_found, verdict.reason
 
     def canonical_hash(self, state: Dict[str, Any]) -> str:
