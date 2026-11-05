@@ -68,6 +68,7 @@ from scripts.schedule_pool.types import (  # noqa: E402
 )
 
 EXIT_OK, EXIT_FAIL, EXIT_ENV = 0, 1, 2
+CALIBRATION_PROBES = 3
 DBS = ("sqlite", "postgres", "mysql")
 DEFAULT_OUT = ROOT / "results" / "isotest"
 _EVENT_RE = re.compile(r"^s(\d+)_t(\d+)_q(\d+)_([a-z]+)$")
@@ -238,10 +239,16 @@ def sandbox_dsn(db: str, dsn: str, out: Optional["Out"] = None) -> str:
     return _with_namespace(db, dsn, name)
 
 
-def cleanup_sandboxes() -> None:
+def cleanup_sandboxes(dsns: Optional[Iterable[str]] = None) -> None:
+    """Drop this session's sandboxes (only those behind ``dsns``, if given)."""
     from scripts.experiments.db_adapter import make_adapter
+    wanted = None if dsns is None else set(dsns)
+    keep = []
     while _SANDBOXES:
         db, dsn, name = _SANDBOXES.pop()
+        if wanted is not None and _with_namespace(db, dsn, name) not in wanted:
+            keep.append((db, dsn, name))
+            continue
         try:
             a = make_adapter(db, dsn)
             try:
@@ -251,6 +258,7 @@ def cleanup_sandboxes() -> None:
                 a.close()
         except Exception:
             pass  # best effort; names are prefixed isotest_ for manual cleanup
+    _SANDBOXES.extend(reversed(keep))
 
 
 def server_version(db: str, dsn: str) -> str:
@@ -426,21 +434,63 @@ def calibrate(cfg: RunConfig, variant: Optional[str] = None) -> Calibration:
     statements has different events.  Always calibrate the variant you
     are about to attack.
     """
-    probe = cfg.run(Schedule.empty(), stagger_ms=50.0, variant=variant)
-    durations = []
-    for w in range(cfg.n_workers):
-        evs = [e for e in probe.trace if e.worker == w]
-        if evs:
-            durations.append(max(e.end_ms for e in evs) - min(e.start_ms for e in evs))
+    # Several probes, worst case: one sample under-estimates tail latency on a
+    # noisy machine (a shared CI runner overlapped "serial" transactions).
+    probes = [cfg.run(Schedule.empty(), stagger_ms=50.0, variant=variant)
+              for _ in range(CALIBRATION_PROBES)]
+    durations = [d for p in probes for d in worker_spans(p.trace).values()]
+    durations = [b - a for a, b in durations]
     max_dur = max(durations or [1.0])
-    stagger = float(max(8, min(250, math.ceil(4 * max_dur + 2))))
+    stagger = float(max(10, min(250, math.ceil(4 * max_dur + 2))))
+    probe = probes[0]
+    bug = next((p for p in probes if p.bug_found), None)
     return Calibration(
         stagger_ms=stagger,
-        events=event_space(cfg.workload, cfg.n_workers, probe.trace),
+        events=event_space(cfg.workload, cfg.n_workers, [e for p in probes for e in p.trace]),
         labels=describe_events(probe.trace),
         max_txn_ms=max_dur,
-        serial_bug=probe.bug_reason if probe.bug_found else "",
+        serial_bug=bug.bug_reason if bug else "",
     )
+
+
+def worker_spans(trace: Iterable[TraceEvent]) -> Dict[int, Tuple[float, float]]:
+    """(first call start, last call end) per worker, in trial milliseconds."""
+    spans: Dict[int, Tuple[float, float]] = {}
+    for e in trace:
+        a, b = spans.get(e.worker, (e.start_ms, e.end_ms))
+        spans[e.worker] = (min(a, e.start_ms), max(b, e.end_ms))
+    return spans
+
+
+def transactions_overlapped(trace: Iterable[TraceEvent]) -> bool:
+    """True if any two workers' transactions overlapped in time."""
+    spans = sorted(worker_spans(trace).values())
+    return any(nxt[0] < cur[1] for cur, nxt in zip(spans, spans[1:]))
+
+
+def run_serial(cfg: RunConfig, n: int, *, variant: Optional[str] = None,
+               max_retries: int = 3) -> Tuple[List[Any], int]:
+    """Run ``n`` pause-free trials that are *verified* serial from their trace.
+
+    A trial whose transactions overlapped (the stagger was shorter than a
+    latency spike) is not a serial run, so it is retried with the stagger
+    doubled rather than counted.  Returns (serial results, retries used).
+    """
+    results, retries = [], 0
+    stagger = cfg.stagger_ms
+    for _ in range(n):
+        for attempt in range(max_retries + 1):
+            tr = cfg.run(Schedule.empty(), variant=variant, stagger_ms=stagger)
+            if not transactions_overlapped(tr.trace):
+                results.append(tr)
+                break
+            retries += 1
+            stagger *= 2
+        else:
+            raise HarnessError(
+                f"could not get a serial run of {cfg.workload} on {cfg.db} even with a "
+                f"{stagger / 2:.0f} ms stagger; the database is too slow or overloaded")
+    return results, retries
 
 
 def config_from_args(args: argparse.Namespace, *, connect: bool = True) -> RunConfig:
@@ -1103,7 +1153,7 @@ def cmd_selfcheck(args: argparse.Namespace, out: Out) -> int:
             try:
                 cal = calibrate(cfg)
                 cfg.stagger_ms = cal.stagger_ms
-                serial = run_n(cfg, Schedule.empty(), args.trials)
+                serial, _retries = run_serial(cfg, args.trials)
                 k = sum(tr.bug_found for tr in serial)
                 row["serial"] = _rate(k, args.trials)
                 if k:
@@ -1181,7 +1231,7 @@ def cmd_lab(args: argparse.Namespace, out: Out) -> int:
     out.heading(f"{steps[0][0]}: {steps[0][1]}")
     out.say(f"  $ python -m isotest selfcheck --workloads {cfg.workload} --db {cfg.db}"
             f"   # 5 runs, no pauses, workers start {cfg.stagger_ms:.0f} ms apart")
-    serial = run_n(cfg, Schedule.empty(), 5)
+    serial, _retries = run_serial(cfg, 5)
     k = sum(tr.bug_found for tr in serial)
     out.say(f"  oracle fired in {k}/5 serial runs" + (" -- clean, as expected." if not k else
                                                      out.style.red(" -- unexpected! run selfcheck.")))
@@ -1435,6 +1485,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out = Out(json_mode=args.json, style=style)
     global _SANDBOX_ENABLED
     _SANDBOX_ENABLED = not args.no_sandbox
+    created_before = len(_SANDBOXES)
     try:
         return args.func(args, out)
     except UsageError as e:
@@ -1450,4 +1501,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("\nisotest: interrupted", file=sys.stderr)
         return 130
     finally:
-        cleanup_sandboxes()
+        # Drop only the sandboxes this invocation created (in-process callers,
+        # e.g. tests, may hold others).
+        cleanup_sandboxes([_with_namespace(*sb) for sb in _SANDBOXES[created_before:]])

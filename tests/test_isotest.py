@@ -81,7 +81,7 @@ def pg_dsn():
     from isotest import cli
     dsn = cli.sandbox_dsn("postgres", PG_DSN)
     yield dsn
-    cli.cleanup_sandboxes()
+    cli.cleanup_sandboxes([dsn])
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +570,9 @@ def test_pg_sandbox_isolates_concurrent_sessions():
             a.close()
             b.close()
     finally:
-        cli.cleanup_sandboxes()
+        # Only this test's sandboxes: the module-scoped pg_dsn fixture's
+        # schema must survive for the tests that run after this one.
+        cli.cleanup_sandboxes([a_dsn, b_dsn])
     probe = make_adapter("postgres", PG_DSN)
     try:
         left = probe.exec("SELECT COUNT(*) FROM information_schema.schemata "
@@ -687,3 +689,46 @@ def test_top_level_parser_does_not_abbreviate_subcommand_options():
     assert parser.allow_abbrev is False
     args = parser.parse_args(["replay", "a.json", "--n", "5", "--min-rate", "0.9"])
     assert (args.n, args.min_rate) == (5, 0.9)
+
+
+def test_serial_runs_are_verified_from_the_trace():
+    # A "serial" run whose transactions overlapped (latency spike longer than
+    # the stagger) must be retried with a longer stagger, never counted.
+    from isotest import cli
+    from scripts.experiments.micro_runner import TrialResult
+
+    def ev(w, a, b):
+        return TraceEvent(w, f"s{w}_t0_q0_begin", "begin", "", 0.0, a, b, "OK")
+
+    assert not cli.transactions_overlapped([ev(0, 0, 3), ev(1, 10, 12)])
+    assert cli.transactions_overlapped([ev(0, 0, 15), ev(1, 10, 12)])
+
+    seen = []
+
+    class Fake:
+        stagger_ms = 10.0
+        workload, db = "w", "sqlite"
+
+        def run(self, schedule, variant=None, stagger_ms=None):
+            seen.append(stagger_ms)
+            overlap = stagger_ms < 40          # spikes until the stagger reaches 40 ms
+            trace = [ev(0, 0, 25), ev(1, stagger_ms, stagger_ms + 2)]
+            return TrialResult([], {}, "h", overlap, "Lost update!" if overlap else "ok", 1.0,
+                               trace=trace)
+
+    results, retries = cli.run_serial(Fake(), 1)
+    assert seen == [10.0, 20.0, 40.0] and retries == 2
+    assert [r.bug_found for r in results] == [False]
+
+
+@needs_pg
+def test_pg_serial_check_does_not_blame_overlap_on_the_harness(pg_dsn):
+    # Reproduces the CI failure: with a too-short stagger the lost_update
+    # counter "fails in serial execution" because the transactions overlap.
+    from isotest import cli
+    cfg = cli.RunConfig(workload="lost_update_counter", db="postgres", dsn=pg_dsn,
+                        n_workers=2, mode="step", stagger_ms=1.0)
+    naive = [cfg.run(Schedule.empty()) for _ in range(5)]
+    assert all(cli.transactions_overlapped(t.trace) for t in naive)
+    serial, retries = cli.run_serial(cfg, 5, max_retries=6)
+    assert retries > 0 and not any(t.bug_found for t in serial)
