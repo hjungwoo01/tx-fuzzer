@@ -52,15 +52,24 @@ errors = []
 
 
 def check(name: str, condition: bool, msg: str = "") -> None:
+    """Record a named check and FAIL the enclosing test if it does not hold.
+
+    This used to only print and bump a counter, which meant that under
+    pytest (``make test-py``) every test in this file passed unconditionally
+    -- a deliberately false check still reported green.  Raising keeps the
+    script-mode summary (``python tests/test_schedule_pool.py``) while making
+    failures visible to pytest and CI.
+    """
     global passed, failed
     if condition:
         passed += 1
         print(f"  PASS: {name}")
-    else:
-        failed += 1
-        detail = f" — {msg}" if msg else ""
-        errors.append(f"FAIL: {name}{detail}")
-        print(f"  FAIL: {name}{detail}")
+        return
+    failed += 1
+    detail = f" — {msg}" if msg else ""
+    errors.append(f"FAIL: {name}{detail}")
+    print(f"  FAIL: {name}{detail}")
+    raise AssertionError(f"{name}{detail}")
 
 
 def section(name: str) -> None:
@@ -777,8 +786,25 @@ def test_oracle_interface() -> None:
     v3 = od.check([], {"balance": -60, "successful_withdrawals": 2})
     check("overdraft detected", v3.bug_found is True)
 
-    v4 = od.check([], {"balance": 20, "successful_withdrawals": 1})
-    check("no overdraft", v4.bug_found is False)
+    # A consistent clean run: one worker withdrew 80 of 100, the database
+    # recorded exactly one successful withdrawal, and the balance agrees.
+    v4 = od.check(
+        [{"outcome": "withdrawn", "worker": "w0"},
+         {"outcome": "insufficient", "worker": "w1"}],
+        {"balance": 20, "successful_withdrawals": 1},
+    )
+    check("no overdraft", v4.bug_found is False, v4.reason)
+
+    # A worker that reports success for a write the database never committed
+    # is a swallowed-error bug, not an isolation anomaly.
+    v4b = od.check(
+        [{"outcome": "withdrawn", "worker": "w0"},
+         {"outcome": "withdrawn", "worker": "w1"}],
+        {"balance": 20, "successful_withdrawals": 1},
+    )
+    check("phantom success detected", v4b.bug_found is True)
+    check("phantom success categorized", v4b.category == "swallowed_error", v4b.category)
+    check("overdraft categorized as anomaly", v3.category == "isolation_anomaly", v3.category)
 
     # LostAppendOracle
     la = LostAppendOracle()
@@ -845,28 +871,37 @@ def main() -> int:
     print("  Schedule Pool — Automated Test Suite")
     print("=" * 60)
 
-    test_schedule_serialization()
-    test_schedule_record()
-    test_stable_event_ids()
-    test_no_cross_run_stacking()
-    test_inherited_mutation()
-    test_pool_retention()
-    test_retention_policy()
-    test_exact_replay()
-    test_canonical_novelty()
-    test_pretty_print()
-    test_case_pool_search()
-    test_dual_objective_search()
-    test_bug_bonus_scoring()
-    test_ttfsr_retention()
-    test_compact_bonus()
-    test_final_eval_imports()
-    # New type-system tests
-    test_event_type()
-    test_delay_point()
-    test_final_state_hash()
-    test_oracle_interface()
-    test_schedule_artifact()
+    tests = [
+        test_schedule_serialization,
+        test_schedule_record,
+        test_stable_event_ids,
+        test_no_cross_run_stacking,
+        test_inherited_mutation,
+        test_pool_retention,
+        test_retention_policy,
+        test_exact_replay,
+        test_canonical_novelty,
+        test_pretty_print,
+        test_case_pool_search,
+        test_dual_objective_search,
+        test_bug_bonus_scoring,
+        test_ttfsr_retention,
+        test_compact_bonus,
+        test_final_eval_imports,
+        # New type-system tests
+        test_event_type,
+        test_delay_point,
+        test_final_state_hash,
+        test_oracle_interface,
+        test_schedule_artifact,
+    ]
+    for test_fn in tests:
+        try:
+            test_fn()
+        except AssertionError:
+            # Already recorded by check(); keep running the other tests so the
+            # script-mode summary lists every failure.
+            pass
 
     print(f"\n{'='*60}")
     print(f"  Results: {passed} passed, {failed} failed")

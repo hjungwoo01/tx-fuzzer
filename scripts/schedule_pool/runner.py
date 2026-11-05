@@ -17,10 +17,8 @@ stress/random/heuristic.
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import random as _random
-import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -73,6 +71,8 @@ from .pool import PoolConfig, SchedulePool
 from .mutator import MutationConfig, ScheduleMutator
 from .retention import RetentionPolicy, RetentionReason
 from .base_strategy import BaseStrategy, HeuristicStrategy, RandomStrategy
+from .execution import execute_trial
+from .injection import InjectionMode
 
 # Backward-compat alias
 ScheduleRecord = ScheduleArtifact
@@ -82,8 +82,16 @@ class SchedulePoolRunner:
     """
     Execute a single trial using a schedule (delay map) from the pool.
 
-    Wraps MicroRunner but intercepts delay injection to apply the
-    exact delays from the candidate schedule.
+    Delegates to :func:`scripts.schedule_pool.execution.execute_trial`, the
+    one executor shared with replay and minimization.
+
+    ``injection_mode`` controls how delay points are honored:
+
+    * ``"start_skew"`` (default, historical): each worker sleeps
+      ``begin`` + ``max(exec)`` before its transaction; commit delays are
+      ignored.  Kept as the default so published results stay reproducible.
+    * ``"step"``: every delay point pauses the worker exactly where it is
+      named (before BEGIN, before the q-th statement, before COMMIT).
     """
 
     def __init__(
@@ -94,6 +102,8 @@ class SchedulePoolRunner:
         n_workers: int = 4,
         variant: str = "buggy",
         elle_logger: Any = None,
+        injection_mode: str = "start_skew",
+        worker_timeout_s: float = 30.0,
         **adapter_kwargs: Any,
     ) -> None:
         self.workload = workload
@@ -102,129 +112,28 @@ class SchedulePoolRunner:
         self.n_workers = n_workers
         self.variant = variant
         self.elle_logger = elle_logger
+        self.injection_mode = InjectionMode.parse(injection_mode)
+        self.worker_timeout_s = worker_timeout_s
         self.adapter_kwargs = adapter_kwargs
 
     def run_trial_with_schedule(self, schedule: Schedule) -> TrialResult:
         """
-        Execute one trial applying the exact delays from a schedule.
+        Execute one trial applying the delays from a schedule.
 
-        Each worker's delays are extracted from the schedule by matching
-        event IDs starting with s{worker_id}_*.
-
-        Fresh DB state is guaranteed by re-running setup_sql each call.
+        Fresh DB state is guaranteed by re-running the workload setup each call.
         """
         _ensure_imports()
-        t0 = time.monotonic()
-
-        # Fresh setup
-        setup_adapter = make_adapter(self.db, self.dsn, **self.adapter_kwargs)
-        try:
-            setup_adapter.setup(self.workload.setup_sql(self.db))
-        finally:
-            setup_adapter.close()
-
-        # Build per-worker delay maps from schedule
-        delay_map = schedule.to_delay_map()  # {event_id: delay_seconds}
-
-        # Create per-worker adapters
-        adapters = [
-            make_adapter(self.db, self.dsn, **self.adapter_kwargs)
-            for _ in range(self.n_workers)
-        ]
-        outcomes: List[Dict[str, Any]] = [{}] * self.n_workers
-        error_cats: List[str] = []
-
-        fn = (self.workload.run_buggy if self.variant == "buggy"
-              else self.workload.run_fixed)
-
-        barrier = threading.Barrier(self.n_workers, timeout=10)
-
-        elle = self.elle_logger
-
-        def worker(idx: int) -> None:
-            try:
-                barrier.wait()
-            except threading.BrokenBarrierError:
-                pass
-
-            # Log invoke
-            if elle:
-                elle.log_invoke(process=idx, f="txn", value=None)
-
-            # Apply per-worker delays from schedule
-            # "begin" delay: before transaction starts
-            begin_key = f"s{idx}_t0_q0_begin"
-            if begin_key in delay_map and delay_map[begin_key] > 0:
-                time.sleep(delay_map[begin_key])
-
-            # We inject "exec" delays before executing the worker function.
-            # For micro workloads, all SQL runs inside fn(), so we apply
-            # the max exec delay for this worker as a pre-exec delay.
-            # This is the reduced-form compromise: we can't intercept
-            # individual SQL steps inside fn(), but we can delay the
-            # overall worker start and commit phases.
-            exec_delays = [
-                v for k, v in delay_map.items()
-                if k.startswith(f"s{idx}_") and "_exec" in k
-            ]
-            if exec_delays:
-                time.sleep(max(exec_delays))
-
-            try:
-                result = fn(adapters[idx], idx)
-                outcomes[idx] = result
-                ec = result.get("error", "OK")
-                if ec != "OK":
-                    error_cats.append(ec)
-                    if elle:
-                        elle.log_fail(process=idx, f="txn", value=result, error=ec)
-                else:
-                    if elle:
-                        elle.log_ok(process=idx, f="txn", value=result)
-            except Exception as e:
-                outcomes[idx] = {"outcome": "exception", "error": str(e)}
-                error_cats.append("OTHER")
-                if elle:
-                    elle.log_fail(process=idx, f="txn", value=None, error=str(e))
-
-        threads = []
-        for i in range(self.n_workers):
-            t = threading.Thread(target=worker, args=(i,))
-            threads.append(t)
-            t.start()
-        for t in threads:
-            t.join(timeout=30)
-
-        # Read canonical state
-        read_adapter = make_adapter(self.db, self.dsn, **self.adapter_kwargs)
-        try:
-            sig = inspect.signature(self.workload.canonical)
-            if len(sig.parameters) > 1:
-                state = self.workload.canonical(read_adapter, outcomes)
-            else:
-                state = self.workload.canonical(read_adapter)
-        finally:
-            read_adapter.close()
-
-        for a in adapters:
-            try:
-                a.close()
-            except Exception:
-                pass
-
-        bug_found, bug_reason = self.workload.oracle(outcomes, state)
-
-        elapsed = (time.monotonic() - t0) * 1000
-        h = self.workload.canonical_hash(state)
-
-        return TrialResult(
-            outcomes=outcomes,
-            canonical_state=state,
-            canonical_hash=h,
-            bug_found=bug_found,
-            bug_reason=bug_reason,
-            elapsed_ms=elapsed,
-            error_categories=error_cats,
+        return execute_trial(
+            self.workload,
+            db=self.db,
+            dsn=self.dsn,
+            schedule=schedule,
+            variant=self.variant,
+            n_workers=self.n_workers,
+            mode=self.injection_mode,
+            elle_logger=self.elle_logger,
+            worker_timeout_s=self.worker_timeout_s,
+            adapter_kwargs=self.adapter_kwargs,
         )
 
 
@@ -245,6 +154,7 @@ def run_pool_search(
     rep: int = 0,
     stabilize_replays: int = 10,
     stabilize_mutations: int = 5,
+    injection_mode: str = "start_skew",
     **adapter_kwargs: Any,
 ) -> Tuple[List[CoveragePoint], List[TrialResult], SchedulePool]:
     """
@@ -298,8 +208,10 @@ def run_pool_search(
         dsn=dsn,
         n_workers=n_workers,
         variant=variant,
+        injection_mode=injection_mode,
         **adapter_kwargs,
     )
+    mode_value = pool_runner.injection_mode.value
 
     coverage_points: List[CoveragePoint] = []
     trial_results: List[TrialResult] = []
@@ -340,6 +252,9 @@ def run_pool_search(
             discovered_state_hash=tr.canonical_hash,
             bug_found=tr.bug_found,
             bug_reason=tr.bug_reason,
+            bug_category=tr.bug_category,
+            n_workers=n_workers,
+            injection_mode=mode_value,
         )
 
         # 5. Retention check
@@ -389,6 +304,9 @@ def run_pool_search(
                             discovered_state_hash=mtr.canonical_hash,
                             bug_found=mtr.bug_found,
                             bug_reason=mtr.bug_reason,
+                            bug_category=mtr.bug_category,
+                            n_workers=n_workers,
+                            injection_mode=mode_value,
                         )
                         retention.accept(mut_record)
 
@@ -437,6 +355,7 @@ def run_pure_strategy(
     sample_interval_s: float = 0.5,
     rep: int = 0,
     strategy_label: Optional[str] = None,
+    injection_mode: str = "start_skew",
     **adapter_kwargs: Any,
 ) -> Tuple[List[CoveragePoint], List[TrialResult]]:
     """
@@ -463,6 +382,7 @@ def run_pure_strategy(
         dsn=dsn,
         n_workers=n_workers,
         variant=variant,
+        injection_mode=injection_mode,
         **adapter_kwargs,
     )
 
@@ -554,6 +474,7 @@ def replay_schedule(
     variant: str = "buggy",
     n_workers: int = 4,
     n_replays: int = 20,
+    injection_mode: str = "start_skew",
     **adapter_kwargs: Any,
 ) -> Dict[str, Any]:
     """
@@ -570,6 +491,7 @@ def replay_schedule(
         dsn=dsn,
         n_workers=n_workers,
         variant=variant,
+        injection_mode=injection_mode,
         **adapter_kwargs,
     )
 

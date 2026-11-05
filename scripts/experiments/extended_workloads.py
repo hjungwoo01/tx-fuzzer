@@ -111,7 +111,16 @@ def doctors_buggy(adapter, worker_id):
     return _doctors_op(adapter, (worker_id % 2) + 1, "READ COMMITTED")
 
 
-def doctors_fixed(adapter, worker_id):
+def doctors_naive_fix(adapter, worker_id):
+    """Plausible but WRONG fix: one 'atomic' conditional UPDATE.
+
+    The guard ``(SELECT COUNT(*) ...) > 1`` reads *other* rows that the UPDATE
+    never locks.  Under PostgreSQL READ COMMITTED (and snapshot isolation in
+    general) two doctors updating different rows both see count=2 and both go
+    off call -- write skew survives.  It only looks correct on SQLite, which
+    serializes all writers.  Kept as the ``naive_fix`` variant for teaching:
+    the control sweep caught it flagging 5/5 trials on PostgreSQL 16.
+    """
     # Atomic conditional: only go off if at least 2 still on
     my_id = (worker_id % 2) + 1
     adapter.begin("READ COMMITTED")
@@ -134,6 +143,37 @@ def doctors_fixed(adapter, worker_id):
     if r.rowcount == 0:
         adapter.rollback()
         return {"outcome": "stayed_on_call", "doctor": my_id}
+    cr = adapter.commit()
+    if cr.error_category != ErrorCategory.OK:
+        return {"outcome": "error", "error": cr.error_category.value, "doctor": my_id}
+    return {"outcome": "went_off_call", "doctor": my_id}
+
+
+def doctors_fixed(adapter, worker_id):
+    """Fixed: materialize the conflict by locking every on-call row.
+
+    ``SELECT ... FOR UPDATE`` makes concurrent doctors queue on the same rows;
+    after the first commits, the second re-evaluates the predicate (PG
+    EvalPlanQual / InnoDB locking read), sees only one doctor on call, and
+    stays.  SQLite has no FOR UPDATE but serializes writers, so the
+    conditional UPDATE is already atomic there.
+    """
+    if adapter.db_name == "sqlite":
+        return doctors_naive_fix(adapter, worker_id)
+    my_id = (worker_id % 2) + 1
+    adapter.begin("READ COMMITTED")
+    r = adapter.exec("SELECT id FROM doctors WHERE on_call = TRUE ORDER BY id FOR UPDATE")
+    if r.error_category != ErrorCategory.OK:
+        adapter.rollback()
+        return {"outcome": "error", "error": r.error_category.value, "doctor": my_id}
+    on_call_ids = [row[0] for row in r.rows] if r.rows else []
+    if len(on_call_ids) <= 1 or my_id not in on_call_ids:
+        adapter.rollback()
+        return {"outcome": "stayed_on_call", "doctor": my_id}
+    r2 = adapter.exec("UPDATE doctors SET on_call = FALSE WHERE id = %s", (my_id,))
+    if r2.error_category != ErrorCategory.OK:
+        adapter.rollback()
+        return {"outcome": "error", "error": r2.error_category.value, "doctor": my_id}
     cr = adapter.commit()
     if cr.error_category != ErrorCategory.OK:
         return {"outcome": "error", "error": cr.error_category.value, "doctor": my_id}
@@ -468,6 +508,16 @@ def unique_setup(db: str) -> List[str]:
     ]
 
 
+def unique_setup_fixed(db: str) -> List[str]:
+    """Fixed-variant schema: the fix *is* a UNIQUE constraint on name.
+
+    The fixed variant's docstring always said "the schema enforces a UNIQUE
+    on name", but nothing created it, so the "fix" inserted duplicates on
+    every trial (5/5 in the control sweep on SQLite and PostgreSQL).
+    """
+    return unique_setup(db) + ["CREATE UNIQUE INDEX users_name_uq ON users (name)"]
+
+
 def unique_buggy(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
     """All workers race to register the same username 'alice'."""
     target = "alice"
@@ -691,8 +741,15 @@ def fk_buggy(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
     return {"outcome": "inserted_child", "worker": name}
 
 
-def fk_fixed(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
-    """Fixed: SELECT ... FOR UPDATE on parent (or SERIALIZABLE on SQLite)."""
+def fk_naive_fix(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
+    """Plausible but WRONG fix: inserters lock the parent, the deleter doesn't.
+
+    The deleter's ``DELETE ... AND NOT EXISTS (SELECT ... children)`` cannot
+    see a child that a concurrent inserter has written but not yet
+    committed, and it takes no lock that would make it wait.  Under
+    PostgreSQL READ COMMITTED this leaves an orphan child (4/5 trials in the
+    control sweep).  Kept as the ``naive_fix`` variant for teaching.
+    """
     name = f"w{worker_id}"
     if worker_id % 3 == 0:
         adapter.begin("READ COMMITTED")
@@ -726,6 +783,44 @@ def fk_fixed(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
     if cr.error_category != ErrorCategory.OK:
         return {"outcome": "error", "error": cr.error_category.value, "worker": name}
     return {"outcome": "inserted_child", "worker": name}
+
+
+def fk_fixed(adapter: DBAdapter, worker_id: int) -> Dict[str, Any]:
+    """Fixed: deleter AND inserters serialize on the parent row lock.
+
+    The deleter takes ``SELECT ... FOR UPDATE`` on the parent first, then
+    counts children in a *new* statement (a fresh READ COMMITTED snapshot
+    taken after the lock is granted), so a child committed by an inserter
+    that held the lock is always visible.  (In production the real fix is a
+    FOREIGN KEY constraint.)  SQLite keeps the original path: it serializes
+    writers and the inserters use BEGIN EXCLUSIVE.
+    """
+    if adapter.db_name == "sqlite" or worker_id % 3 != 0:
+        return fk_naive_fix(adapter, worker_id)
+    name = f"w{worker_id}"
+    adapter.begin("READ COMMITTED")
+    r = adapter.exec("SELECT id FROM parents WHERE id = 1 FOR UPDATE")
+    if r.error_category != ErrorCategory.OK:
+        adapter.rollback()
+        return {"outcome": "error", "error": r.error_category.value, "worker": name}
+    if not r.rows:
+        adapter.rollback()
+        return {"outcome": "parent_gone", "worker": name}
+    rc = adapter.exec("SELECT COUNT(*) FROM children WHERE parent_id = 1")
+    if rc.error_category != ErrorCategory.OK:
+        adapter.rollback()
+        return {"outcome": "error", "error": rc.error_category.value, "worker": name}
+    if rc.rows and rc.rows[0][0] > 0:
+        adapter.rollback()
+        return {"outcome": "has_children", "worker": name}
+    rd = adapter.exec("DELETE FROM parents WHERE id = 1")
+    if rd.error_category != ErrorCategory.OK:
+        adapter.rollback()
+        return {"outcome": "error", "error": rd.error_category.value, "worker": name}
+    cr = adapter.commit()
+    if cr.error_category != ErrorCategory.OK:
+        return {"outcome": "error", "error": cr.error_category.value, "worker": name}
+    return {"outcome": "deleted_parent", "worker": name}
 
 
 def fk_canonical(adapter, outcomes=None):
@@ -853,6 +948,7 @@ EXTENDED_WORKLOADS: Dict[str, MicroWorkload] = {
         run_fixed=doctors_fixed,
         oracle_instance=WriteSkewOracle(),
         canonical=doctors_canonical,
+        extra_variants={"naive_fix": doctors_naive_fix},
     ),
     "phantom_insert": MicroWorkload(
         name="phantom_insert",
@@ -885,6 +981,7 @@ EXTENDED_WORKLOADS: Dict[str, MicroWorkload] = {
         run_fixed=unique_fixed,
         oracle_instance=UniqueViolationOracle(),
         canonical=unique_canonical,
+        setup_sql_fixed=unique_setup_fixed,
     ),
     "inventory_oversell": MicroWorkload(
         name="inventory_oversell",
@@ -901,6 +998,7 @@ EXTENDED_WORKLOADS: Dict[str, MicroWorkload] = {
         run_fixed=fk_fixed,
         oracle_instance=FKPhantomOracle(),
         canonical=fk_canonical,
+        extra_variants={"naive_fix": fk_naive_fix},
     ),
     "long_fork": MicroWorkload(
         name="long_fork",

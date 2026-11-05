@@ -23,10 +23,40 @@ Or as a context manager:
 from __future__ import annotations
 
 import json
+import math
+import re
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
+
+
+_KEYWORD_RE = re.compile(r"^:[A-Za-z*+!_?<>=/.-][A-Za-z0-9*+!_?<>=/.:#-]*$")
+_KEY_NAME_RE = re.compile(r"^[A-Za-z*+!_?<>=/.-][A-Za-z0-9*+!_?<>=/.:#-]*$")
+
+
+def _edn_str(s: str) -> str:
+    """Quote a string as an EDN string literal.
+
+    Without escaping, a database error such as ``relation "accounts" does
+    not exist`` silently re-parsed as the string ``"relation "`` followed by
+    a bogus map key ``accounts`` -- corrupting the history Elle checks.
+    """
+    out = (s.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t"))
+    return f'"{out}"'
+
+
+def _edn_key(k: Any) -> str:
+    ks = str(k)
+    if ks.startswith(":") and _KEYWORD_RE.match(ks):
+        return ks
+    if _KEY_NAME_RE.match(ks):
+        return f":{ks}"
+    return _edn_str(ks)
 
 
 def _edn_value(v: Any) -> str:
@@ -35,22 +65,32 @@ def _edn_value(v: Any) -> str:
         return "nil"
     if isinstance(v, bool):
         return "true" if v else "false"
-    if isinstance(v, (int, float)):
+    if isinstance(v, int):
         return str(v)
+    if isinstance(v, float):
+        if math.isnan(v):
+            return "##NaN"
+        if math.isinf(v):
+            return "##Inf" if v > 0 else "##-Inf"
+        return repr(v)
     if isinstance(v, str):
-        if v.startswith(":"):
+        if _KEYWORD_RE.match(v):
             return v  # already a keyword
-        return f'"{v}"'
+        return _edn_str(v)
+    if isinstance(v, (bytes, bytearray)):
+        return _edn_str(bytes(v).decode("utf-8", "replace"))
     if isinstance(v, (list, tuple)):
         inner = " ".join(_edn_value(item) for item in v)
         return f"[{inner}]"
+    if isinstance(v, (set, frozenset)):
+        inner = " ".join(sorted(_edn_value(item) for item in v))
+        return "#{" + inner + "}"
     if isinstance(v, dict):
         parts = []
-        for k in sorted(v.keys()):
-            key_str = f":{k}" if not str(k).startswith(":") else str(k)
-            parts.append(f"{key_str} {_edn_value(v[k])}")
+        for k in sorted(v.keys(), key=str):
+            parts.append(f"{_edn_key(k)} {_edn_value(v[k])}")
         return "{" + " ".join(parts) + "}"
-    return f'"{v}"'
+    return _edn_str(str(v))
 
 
 class ElleLogger:
@@ -106,11 +146,10 @@ class ElleLogger:
             f":value {_edn_value(value)}",
         ]
         if error:
-            parts.append(f':error "{error}"')
+            parts.append(f":error {_edn_str(str(error))}")
         if meta:
             for k, v in sorted(meta.items()):
-                key_str = f":{k}" if not k.startswith(":") else k
-                parts.append(f"{key_str} {_edn_value(v)}")
+                parts.append(f"{_edn_key(k)} {_edn_value(v)}")
 
         line = "{" + " ".join(parts) + "}\n"
 

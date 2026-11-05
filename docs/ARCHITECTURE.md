@@ -41,6 +41,21 @@ The point is to explore interleavings while keeping the workload itself stable.
 - `pool.py`: retention store and weighted sampling
 - `retention.py`: admission policy
 - `runner.py`: pool-based search and exact replay
+- `injection.py`: statement-level delay injection (`InstrumentedAdapter`),
+  execution trace, strict canonical reads (`StrictAdapter` / `HarnessError`)
+- `execution.py`: `execute_trial`, the single trial executor used by search,
+  replay, minimization and the CLI
+- `minimize.py`: delta debugging over delay points + delay shrinking
+- `timeline.py`: interleaving timeline and delay-plan rendering
+
+### `isotest/`
+
+The workshop CLI (`python -m isotest`): `doctor`, `list`, `lab`, `explore`,
+`minimize`, `show`, `replay`, `sweep`, `stress`, `selfcheck`.  It is a thin
+layer over `scripts/schedule_pool/`.  It adds per-machine calibration of the
+serial-baseline stagger and per-session database sandboxes (a private
+PostgreSQL schema or MySQL database), and it accepts user-supplied variants
+(`--variant file.py:function`).
 
 ## Schedule model
 
@@ -59,6 +74,30 @@ Important properties:
 
 This is the repository’s central abstraction for controlled concurrency
 testing.
+
+### Injection modes
+
+How a schedule's delay points are honored is explicit, and every artifact
+records it (`injection_mode`):
+
+- `step`: pause immediately before the named BEGIN, the q-th statement of
+  the transaction, or COMMIT/ROLLBACK.  Delays on one worker add up.  This
+  is what the event-id scheme describes, and it is the CLI default.
+- `start_skew` (historical): each worker sleeps `begin + max(exec)` before
+  its transaction and commit delays are ignored, so only per-worker start
+  offsets are controlled.  It stays the default of the research entry points
+  (`run_pool_search`, `SchedulePoolRunner`) so published results reproduce.
+  Artifacts without a recorded mode load as `start_skew`.
+
+Artifacts also record `n_workers` and `stagger_ms`, the baseline start
+offset between consecutive workers.  With a stagger longer than one
+transaction, the no-pause baseline is serial, so a minimized schedule's size
+is the number of preemptions the bug needs.
+
+Delay points are positional: "the q-th statement" of a *different* variant
+is a different statement.  Validate a fix by sweeping or exploring that
+variant itself, not only by replaying the bug's schedule (the CLI warns when
+scheduled pauses are never reached).
 
 ## Lower-level execution layer: Go runner
 

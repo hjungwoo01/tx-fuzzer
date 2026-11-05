@@ -37,6 +37,7 @@ DOCKER_RUN_IT = docker run --rm -it \
 	$(IMAGE_NAME)
 
 .PHONY: help build demo eval-fast eval-full eval-conference shell \
+	doctor lab lab-postgres selfcheck selfcheck-postgres replay-examples \
 	sensitivity-native coverage-native elle-verify-native \
 	baselines-native scalability-native significance-native oracle-soundness-native \
 	eval-paper eval-paper-check eval-paper-help eval-paper-parallel \
@@ -49,6 +50,14 @@ help:
 	@echo ""
 	@echo "  IsoTest — Client-Side Schedule Exploration for Isolation Testing"
 	@echo "  ================================================================"
+	@echo ""
+	@echo "  WORKSHOP (no Docker, SQLite needs only Python 3.9+):"
+	@echo ""
+	@echo "    make doctor           Check Python, drivers, and database reachability"
+	@echo "    make lab              Guided 8-step lab on SQLite (~5 s)"
+	@echo "    make lab-postgres     Same lab on PostgreSQL: true isolation anomalies"
+	@echo "    make selfcheck        Harness health: serial + fixed variants must be clean"
+	@echo "    make replay-examples  Replay every shipped example artifact (CI check)"
 	@echo ""
 	@echo "  QUICK START (Docker only — no other dependencies):"
 	@echo ""
@@ -85,6 +94,40 @@ help:
 	@echo "    make coverage-native        Longitudinal coverage (local Python)"
 	@echo "    make elle-verify-native     Elle verification (local Clojure)"
 	@echo ""
+
+# ===========================================================================
+# Workshop CLI (python -m isotest) — see WORKSHOP.md
+# ===========================================================================
+
+ISOTEST ?= python -m isotest
+
+doctor:
+	$(ISOTEST) doctor
+
+lab:
+	$(ISOTEST) lab --db sqlite
+
+lab-postgres:
+	$(ISOTEST) lab --db postgres --workload doctors_on_call
+
+selfcheck:
+	$(ISOTEST) selfcheck --db sqlite --adversarial
+
+selfcheck-postgres:
+	$(ISOTEST) selfcheck --db postgres --adversarial
+
+# Every shipped artifact must still reproduce on its own variant (in >= 90%
+# of replays: timing on shared CI runners is noisy) and stay clean -- strictly,
+# zero hits -- on the fixed variant under the same schedule.
+REPLAY_MIN_RATE ?= 0.9
+
+replay-examples:
+	$(ISOTEST) replay examples/repros/bank_overdraft_sqlite.json --control --n 20 --min-rate $(REPLAY_MIN_RATE)
+	@if $(ISOTEST) doctor --db postgres >/dev/null 2>&1; then \
+		for f in examples/repros/*_postgres.json; do \
+			$(ISOTEST) replay "$$f" --control --n 20 --min-rate $(REPLAY_MIN_RATE) || exit 1; \
+		done; \
+	else echo "PostgreSQL not reachable: skipped *_postgres.json examples"; fi
 
 # ===========================================================================
 # Docker
@@ -333,7 +376,7 @@ test-go:
 	GOCACHE=$(GOCACHE) go test ./...
 
 test-py:
-	python -m pytest tests/test_schedule_pool.py tests/test_multidb_canonical_hash.py tests/test_evaluation_extensions.py
+	python -m pytest tests/test_schedule_pool.py tests/test_multidb_canonical_hash.py tests/test_evaluation_extensions.py tests/test_isotest.py
 
 check-shell:
 	find . \

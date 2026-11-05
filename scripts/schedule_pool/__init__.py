@@ -19,6 +19,7 @@ from .types import (
     Event,
     DelayPoint,
     FinalStateHash,
+    BugCategory,
     OracleVerdict,
     ReplayResult,
     ReplayVerification,
@@ -52,7 +53,14 @@ _LAZY_MODULES = {
     "run_pure_strategy": ".runner",
     "replay_schedule": ".runner",
     "verify_replay": ".replay",
+    "assess_replay": ".replay",
     "ElleLogger": ".elle_logger",
+    "execute_trial": ".execution",
+    "InjectionMode": ".injection",
+    "HarnessError": ".injection",
+    "TraceEvent": ".injection",
+    "minimize_schedule": ".minimize",
+    "render_timeline": ".timeline",
 }
 
 
@@ -75,6 +83,7 @@ __all__ = [
     "Event",
     "DelayPoint",
     "FinalStateHash",
+    "BugCategory",
     "OracleVerdict",
     "ReplayResult",
     "ReplayVerification",
@@ -116,6 +125,14 @@ __all__ = [
     "run_pure_strategy",
     "replay_schedule",
     "verify_replay",
+    "assess_replay",
+    # Statement-level execution
+    "execute_trial",
+    "InjectionMode",
+    "HarnessError",
+    "TraceEvent",
+    "minimize_schedule",
+    "render_timeline",
     # Elle logger
     "ElleLogger",
     # Backward-compat

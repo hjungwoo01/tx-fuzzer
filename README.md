@@ -1,6 +1,52 @@
 # IsoTest
 
-## Quick Start (Reviewers Start Here)
+Find, explain, and pin down transaction-isolation bugs by controlling *when*
+each SQL statement runs, entirely from the client.
+
+## Quick Start: workshop / hands-on (no Docker, no pip install)
+
+```bash
+python3 -m isotest doctor    # Python 3.9+ is all SQLite needs
+python3 -m isotest lab       # 8 guided steps in ~3 s: serial → stress → explore →
+                             # minimize → explain → verify fix → challenge → CI
+```
+
+```text
+    time    │ w0                                           │ w1
+────────────┼──────────────────────────────────────────────┼─────────────────────────────────
+     0.1 ms │ SELECT balance FROM accounts WHERE id… → 100 │
+     0.3 ms │ ⏸ pause 20.1 ms [q2_exec]                    │
+    10.2 ms │                                              │ SELECT balance FROM … → 100
+    10.3 ms │                                              │ UPDATE accounts SET … → 1 row
+    10.3 ms │                                              │ COMMIT
+    20.4 ms │ UPDATE accounts SET balance = balanc… ✗ BUSY │
+    20.6 ms │ COMMIT                                       │
+  BUG: Phantom success: 2 worker(s) reported withdrawn but successful_withdrawals=1
+```
+
+With PostgreSQL (`pip install psycopg2-binary`; any server via `POSTGRES_DSN`,
+or `docker compose -f docker-compose-multidb.yml up -d pg16_2`), the same code
+and the same single pause drive the balance to −60:
+
+```bash
+python3 -m isotest lab --db postgres --workload doctors_on_call
+python3 -m isotest replay examples/repros/bank_overdraft_postgres.json --control
+```
+
+* Facilitator guide and labs: [WORKSHOP.md](WORKSHOP.md)
+* Workshop submission package: [docs/workshop/SUBMISSION.md](docs/workshop/SUBMISSION.md)
+* Audit and upgrade record (what was wrong, how it was verified): [docs/workshop/AUDIT.md](docs/workshop/AUDIT.md)
+
+> **Note for users of earlier revisions.**  The PostgreSQL `bank_overdraft`
+> oracle used to flag 100% of trials, fixed variant included.  Two
+> "fixed" variants (`doctors_on_call`, `fk_phantom`) were not actually
+> fixed.  The executor ignored commit delay points and collapsed exec delay
+> points into one pre-transaction sleep.  `make test-py` could not fail.
+> All of this is fixed and covered by tests; see the audit.  The research
+> harness keeps the historical delay semantics (`start_skew`) so published
+> numbers remain reproducible.
+
+## Quick Start: paper artifact (Docker)
 
 **Docker is the only requirement.**  The image bundles Python, Java, Clojure,
 Elle, SQLite, and all dependencies — no local toolchain setup needed.
@@ -59,6 +105,18 @@ states or isolation violations.
 
 ## Key capabilities
 
+- **Statement-level schedule control** — `step` injection pauses a session
+  immediately before its BEGIN, its *n*-th statement, or its COMMIT, without
+  touching the SQL.  The historical `start_skew` mode (per-session start
+  offsets only) is kept for reproducing published results.
+- **Minimization and explanation** — delta debugging shrinks a failing
+  schedule to its causal pause(s); a statement-level timeline shows the
+  interleaving, results, errors and lock waits.
+- **Categorized verdicts** — isolation anomalies are reported separately from
+  application code that ignored a rejected write (`swallowed_error`).
+- **Self-checking harness** — `isotest selfcheck --adversarial` requires
+  serial runs and every fixed variant (under every single-pause attack) to
+  be clean.
 - **High replay-success rates** — retained artifacts include measured replay
   rates; the tool verifies that replaying a `ScheduleArtifact` reproduces the
   exact same `FinalStateHash` as the original exploration run.
@@ -102,6 +160,8 @@ the `FinalStateHash` matches.
 ### 4. Replay a pre-saved artifact
 
 ```bash
+python -m isotest replay examples/repros/bank_overdraft_sqlite.json --control
+# historical path, same artifact:
 python scripts/run_demo.py replay examples/repros/bank_overdraft_sqlite.json
 ```
 
@@ -144,8 +204,11 @@ history output, replay schedules, and hybrid replay + background load.
 
 ## Repository map
 
+- `isotest/` — the workshop CLI (`python -m isotest`)
 - `scripts/schedule_pool/` — core types, schedule model, event IDs, mutation,
-  retention, pool, replay verification, Elle logger, Oracle interface
+  retention, pool, replay verification, Elle logger, Oracle interface;
+  `injection.py` (statement-level delays + trace), `execution.py` (the one
+  trial executor), `minimize.py` (ddmin + shrinking), `timeline.py`
 - `scripts/experiments/` — multi-DB adapters, workloads, case studies,
   evaluation harness
 - `scripts/evaluate_sensitivity.py` — delay-sensitivity benchmarking
@@ -155,7 +218,8 @@ history output, replay schedules, and hybrid replay + background load.
   pipeline wrappers
 - `cmd/runner/`, `internal/` — Go execution engine for YAML workloads
 - `workloads/` — YAML workload configurations
-- `examples/repros/` — pre-saved ScheduleArtifacts for known anomalies
+- `examples/repros/` — tool-generated, minimized ScheduleArtifacts (CI replays them);
+  `examples/exercises/` — workshop exercise starters
 - `docs/` — architecture and evaluation documentation
 - `Dockerfile` — self-contained reviewer environment (Python + JDK + Clojure + Elle)
 
@@ -165,6 +229,8 @@ history output, replay schedules, and hybrid replay + background load.
 make verify        # Full: go vet + shell check + Python compile + all tests
 make test          # Go + Python tests
 make test-py       # Python tests only
+make selfcheck     # serial runs + fixed variants under single-pause attack (SQLite)
+make replay-examples   # every shipped artifact still reproduces; fixes stay clean
 ```
 
 ## Extending IsoTest
@@ -189,6 +255,11 @@ passing it to `run_pool_search(base_strategy=...)`.
 
 ## Documentation
 
+- [WORKSHOP.md](WORKSHOP.md) — hands-on labs and facilitator guide
+- [docs/workshop/SUBMISSION.md](docs/workshop/SUBMISSION.md) — workshop
+  abstract, outcomes, audience
+- [docs/workshop/AUDIT.md](docs/workshop/AUDIT.md) — audit findings, fixes,
+  and how each was verified
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component map and extension
   points
 - [docs/multidb_evaluation.md](docs/multidb_evaluation.md) — evaluation

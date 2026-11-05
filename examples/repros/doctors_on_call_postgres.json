@@ -1,0 +1,121 @@
+{
+  "schedule_id": "d42aaa7c9353",
+  "parent_schedule_id": "3d44cd4e04bc",
+  "db": "postgres",
+  "workload": "doctors_on_call",
+  "variant": "buggy",
+  "strategy": "minimized",
+  "seed": 11,
+  "schedule": [
+    {
+      "event": "s0_t0_q3_commit",
+      "delay_ms": 51.868
+    }
+  ],
+  "discovered_state_hash": "34fc672420467e65",
+  "bug_found": true,
+  "bug_reason": "Write skew (G2-item)! on_call=0, expected >= 1",
+  "control_clean": null,
+  "replay_rate_buggy": 1.0,
+  "replay_rate_control": null,
+  "total_delay_ms": 51.868,
+  "delay_count": 1,
+  "retention_reason": "minimized",
+  "created_at": "2026-11-04T13:31:11.408661+00:00",
+  "n_workers": 2,
+  "injection_mode": "step",
+  "bug_category": "isolation_anomaly",
+  "db_version": "PostgreSQL 16.15",
+  "stagger_ms": 25.0,
+  "evidence_trace": [
+    {
+      "worker": 0,
+      "event": "s0_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 0.092,
+      "end_ms": 0.592,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT COUNT(*) FROM doctors WHERE on_call = TRUE",
+      "delay_ms": 0.0,
+      "start_ms": 0.637,
+      "end_ms": 1.709,
+      "status": "OK",
+      "result": "2"
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q2_exec",
+      "phase": "exec",
+      "sql": "UPDATE doctors SET on_call = FALSE WHERE id = %s",
+      "delay_ms": 0.0,
+      "start_ms": 1.74,
+      "end_ms": 2.266,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q0_begin",
+      "phase": "begin",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 25.14,
+      "end_ms": 25.678,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q1_exec",
+      "phase": "exec",
+      "sql": "SELECT COUNT(*) FROM doctors WHERE on_call = TRUE",
+      "delay_ms": 0.0,
+      "start_ms": 25.739,
+      "end_ms": 26.724,
+      "status": "OK",
+      "result": "2"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q2_exec",
+      "phase": "exec",
+      "sql": "UPDATE doctors SET on_call = FALSE WHERE id = %s",
+      "delay_ms": 0.0,
+      "start_ms": 26.757,
+      "end_ms": 27.325,
+      "status": "OK",
+      "result": "1 row"
+    },
+    {
+      "worker": 1,
+      "event": "s1_t0_q3_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 0.0,
+      "start_ms": 27.347,
+      "end_ms": 28.005,
+      "status": "OK",
+      "result": ""
+    },
+    {
+      "worker": 0,
+      "event": "s0_t0_q3_commit",
+      "phase": "commit",
+      "sql": "",
+      "delay_ms": 51.868,
+      "start_ms": 54.284,
+      "end_ms": 55.306,
+      "status": "OK",
+      "result": ""
+    }
+  ],
+  "format_version": 2
+}
